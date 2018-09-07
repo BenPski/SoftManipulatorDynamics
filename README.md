@@ -47,7 +47,7 @@ With all of that setup you should be able to compile things like C programs on y
 
 In order to compile with mex your Matlab environement needs to know the location of the C/C++ compiler. For me it did not find this automatically, so to let Matlab know where to look run:
 ```matlab
-setenv('MW_MINGW64_LOC','C:\TDM-GCC-64')
+setenv('MW_MINGW64_LOC','C:\TDM-GCC-64') %this has to be ran every time Matlab starts up if you are using mex, may be worth it to set it in your startup file
 ```
 So, now Matlab should find the compiler, you can check by running:
 ```matlab
