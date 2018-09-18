@@ -85,8 +85,8 @@ eta = eta';
 
 %tca case, with the temperature neural net
 q = [1;0;0]; %the actuation voltage
-[g,xi,eta,tcaTemps] = initTCADynamics;
-[g,xi,eta,tcaTemps] = fullTCADynamics(q,eta,xi,tcaTemps);
+[g,xi,eta,tcaTemps] = initTCADynamics(10);
+[g,xi,eta,tcaTemps] = fullTCADynamics(q,eta,xi,0.01,tcaTemps);
 
 %tca case, with direct temperatures (nearly the same as the cables)
 q = [100;0;0]; %tca temperatures
