@@ -5,21 +5,33 @@
 
 /*
 
-This dynamics uses a discretization of xi_prime = eta_dot + ad_xi * eta to compute the xi at the current time step from the provided eta and prior xi
+ * This dynamics uses a discretization of xi_prime = eta_dot + ad_xi * eta to compute the xi at the current time step from the provided eta and prior xi
 
-this scheme behaves much more intuitively and stabler than the prior dynamics scheme
-for now only use the implicit euler scheme instead of a higher order implicit solver
+ * this scheme behaves much more intuitively and stabler than the prior dynamics scheme
+ * for now only use the implicit euler scheme instead of a higher order implicit solver
+ *
+ *Now for the TCA computations, trying to realize the locality of the force
+ *  the force is dependent on the local strain and the global force value is incorrect
+ *To do this delta is no longer a single value, but a value defined at every discrete point along the body
+ *  d = (norm(xi*r)-1)*Ds
+ *
+ *The modifications of the algorithm now needs
+ *  to compute the discrete values of delta in the integration step
+ *  individual force values in the teim derivative step
+ *  the tip conditoin force is the last force
+ *  the coefficients for the force in the TCA change based on the discrete points
 
 */
 
 
-double tcaForce(double delta, double temp) {
+double tcaForce(int k, double delta, double temp) {
+    //have to modify the coefficients of the polynomials for the forces with c_i/k^(i-1)
 
     /* the force equation for the TCAs */
 
-    double l = 130e-3;
-    double L = 40e-3;
-    double phi0 = 2*M_PI*70;
+    double l = 0.13;
+    double L = 0.04;
+    double phi0 = 2*M_PI*100;
     double D = 1.7e-3;
     int N = 3;
 
@@ -37,13 +49,33 @@ double tcaForce(double delta, double temp) {
     double J = N*M_PI*pow(d_thread,4)/16*(1/2+pow(1/cos(theta),2));
     double I = J/2;
     double A_a = N*M_PI*pow(d_thread,2)/4;
-    double Tau = (J*G*phi0/l)*(d_thread/d_thread0-1);
-    double R = D/2;
-    double alpha = asin(delta/L+sin(alpha0));
-    double f11 = 0.5*l*((pow(R,2)*(pow(cos(alpha),2))/(G*J))+(pow(R,2)*(pow(sin(alpha),2))/(E*I))+((pow(cos(alpha),2))/(G*A_a))+((pow(sin(alpha),2))/(E*A_a)));
-    double f12 = l*R*cos(alpha)/(2*G*J);
-    double F = (delta-f12*Tau)/f11;
-    return -F;
+    double Tau = (J*G*phi0/l)*(1-d_thread/d_thread0);
+    //double R = D/2;
+    //double alpha = asin(delta/L+sin(alpha0));
+    //double f11 = 0.5*l*((pow(R,2)*(pow(cos(alpha),2))/(G*J))+(pow(R,2)*(pow(sin(alpha),2))/(E*I))+((pow(cos(alpha),2))/(G*A_a))+((pow(sin(alpha),2))/(E*A_a)));
+    //double f12 = l*R*cos(alpha)/(2*G*J);
+    
+    //rewrite for f11 and f12
+    double a0 = (2*pow(sin(alpha0),2)/E-2*pow(sin(alpha0),4)/E-2*pow(sin(alpha0),2)/G+pow(sin(alpha0),4)/G+1/G)*k;
+    double a1 = 4*sin(alpha0)/(E*l)-4*sin(alpha0)/(G*l)-8*pow(sin(alpha0),3)/(E*l)+4*pow(sin(alpha0),3)/(G*l);
+    double a2 = (2/(E*pow(l,2))-2/(G*pow(l,2))-12*pow(sin(alpha0),2)/(E*pow(l,2))+6*pow(sin(alpha0),2)/(G*pow(l,2)))/k;
+    double a3 = (4*sin(alpha0)/(G*pow(l,3))-8*sin(alpha0)/(E*pow(l,3)))/pow(k,2);
+    double a4 = (1/(G*pow(l,4))-2/(E*pow(l,4)))/pow(k,3);
+    
+    double b0 = (pow(sin(alpha0),2)/E-pow(sin(alpha0),2)/G+1/G)*k;
+    double b1 = 2*sin(alpha0)/(E*l)-2*sin(alpha0)/(G*l);
+    double b2 = (1/(E*pow(l,2))-1/(G*pow(l,2)))/k;
+    
+    double c0 = (1-pow(sin(alpha0),2))*k;
+    double c1 = -2*sin(alpha0)/l;
+    double c2 = (-1/pow(l,2))/k;
+    
+    double f1 = (8*pow(l,3)/(pow(n,2)*pow(M_PI,3)*pow(d_thread,4)))*(a0+a1*delta+a2*pow(delta,2)+a3*pow(delta,3)+a4*pow(delta,4))+(8*l/(2*M_PI*pow(d_thread,2)))*(b0+b1*delta+b2*pow(delta,2));
+    double f2 = (8*pow(l,2)/(n*pow(M_PI,2)*G*pow(d_thread,4)))*(c0+c1*delta+c2*pow(delta,2));
+    
+    double F = (delta+f2*Tau)/f1;
+    return F;
+    
 
 }
 void approxDerivatives(double dx, double *xi, double *xi_dot, int n) {
@@ -56,11 +88,11 @@ void approxDerivatives(double dx, double *xi, double *xi_dot, int n) {
     for (i=1;i<n-1;i++) {
         for (j=0;j<6;j++) {
             /* center diff */
-            //xi_dot[i*6+j] = (xi[j+6*(i+1)]-xi[j+6*(i-1)])/(2*dx);
+            xi_dot[i*6+j] = (xi[j+6*(i+1)]-xi[j+6*(i-1)])/(2*dx);
             /* forward diff */
             //xi_dot[i*6+j] = (xi[j+6*(i+1)]-xi[j+6*(i)])/(dx);
             /* backward diff */
-            xi_dot[i*6+j] = (xi[j+6*(i)]-xi[j+6*(i-1)])/(dx);
+            //xi_dot[i*6+j] = (xi[j+6*(i)]-xi[j+6*(i-1)])/(dx);
         }
     }
 
@@ -156,12 +188,25 @@ void integrateStates(double dt, double ds, double *r, double *eta, double *eta_p
         xi[i] = eta[i];
         eta[i] = 0;
         xi_acc[i] = 0;
+        
     }
+    wx = xi[0];
+    wy = xi[1];
+    wz = xi[2];
+    vx = xi[3];
+    vy = xi[4];
+    vz = xi[5];
+    for (j=0;j<N;j++) {
+        rx = r[j*N];
+        ry = r[j*N+1];
+        delta[j] = ds*(sqrt(pow(vx - ry*wz,2.0)+pow(vy + rx*wz,2.0)+pow(vz - rx*wy + ry*wx,2.0))-1);
+    }
+    
     /*xi[5] = xi[5] + 1.0;*/
 
-    for (i=0;i<N;i++) {
-        delta[i] = 0;
-    }
+    //for (i=0;i<N;i++) {
+    //    delta[i] = 0;
+    //}
 
     for (i=1;i<n;i++) {
         /* compute xi and xi_acc */
@@ -222,7 +267,7 @@ void integrateStates(double dt, double ds, double *r, double *eta, double *eta_p
         for (j=0;j<N;j++) {
             rx = r[j*N];
             ry = r[j*N+1];
-            delta[j] = delta[j] + (ds/2.0)*(sqrt(pow(vx - ry*wz,2.0)+pow(vy + rx*wz,2.0)+pow(vz - rx*wy + ry*wx,2.0)) + sqrt(pow(vx_p - ry*wz_p,2.0)+pow(vy_p + rx*wz_p,2.0)+pow(vz_p - rx*wy_p + ry*wx_p,2.0)));
+            delta[i*N+j] = ds*(sqrt(pow(vx - ry*wz,2.0)+pow(vy + rx*wz,2.0)+pow(vz - rx*wy + ry*wx,2.0))-1);
         }
 
         /* compute g */
@@ -245,9 +290,9 @@ void integrateStates(double dt, double ds, double *r, double *eta, double *eta_p
 
 
     }
-    for (i=0;i<N;i++) {
-        delta[i] = delta[i]-0.04; /* delta-L_i */
-    }
+    //for (i=0;i<N;i++) {
+    //    delta[i] = delta[i]-0.04; /* delta-L_i */
+    //}
     
 }
 
@@ -299,8 +344,8 @@ void timeDerivative(double r[], double *q, double *delta, double *y, double *xi_
     A = M_PI*Rad*Rad;
     I = (M_PI/4.0)*pow(Rad,4.0);
     J = 2.0*I;
-    //g = -9.8;
-    g = 0;
+    g = -9.8;
+    //g = 0;
     p = 1000;
 
     gsl_matrix_set(K,0,0,E*I);
@@ -433,26 +478,6 @@ void timeDerivative(double r[], double *q, double *delta, double *y, double *xi_
 
 
         /* tcas */
-        /*
-        F_vec[0] = - R6*ry*((R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - (pow(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx),2.0) + pow(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx),2.0))*(R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - R7*ry*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - R8*ry*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2)*(R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)));
-        F_vec[1] = R6*rx*((R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) + R7*rx*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) + R8*rx*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2)*(R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)));
-        F_vec[2] = - (R3*rx - R0*ry)*((R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - (R4*rx - R1*ry)*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - (R5*rx - R2*ry)*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2)*(R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)));
-        F_vec[3] = - R0*((R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - R1*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - R2*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2)*(R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)));
-        F_vec[4] = - R3*((R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - R4*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - R5*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2)*(R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)));
-        F_vec[5] = - R6*((R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - R7*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))^2)*(R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx))) - R8*((R6*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R3*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)) - ((R6*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R3*(ny + oz*rx))^2 + (R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))^2)*(R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R5*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R2*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R7*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R1*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R7*(nz + ox*ry - oy*rx) + R1*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R2*(nx - oz*ry) + R5*(ny + oz*rx)));
-        */
-
-        /*
-
-        F_vec[0] = (R5*ry*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R2*ry*((R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R8*ry*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))*(R2*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R1*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R2*ry*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R5*ry*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R8*ry*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))*(R5*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R3*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) + (R2*ry*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)) - R8*ry*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2) + R5*ry*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))*(R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R7*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R6*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))
-        F_vec[1] = - (R5*rx*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R2*rx*((R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R8*rx*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))*(R2*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R1*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) - (R2*rx*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R5*rx*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R8*rx*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))*(R5*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R3*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx))) - (R2*rx*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)) - R8*rx*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2) + R5*rx*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))*(R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R7*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R6*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))
-        F_vec[2] = (R2*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R1*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*((R4*rx - R3*ry)*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - (R1*rx - R0*ry)*((R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + (R7*rx - R6*ry)*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))) + (R5*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R3*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*((R1*rx - R0*ry)*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - (R4*rx - R3*ry)*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + (R7*rx - R6*ry)*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R7*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R6*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*((R1*rx - R0*ry)*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)) - (R7*rx - R6*ry)*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2) + (R4*rx - R3*ry)*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))
-        F_vec[3] = (R2*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R1*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R3*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R0*((R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R6*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))) + (R5*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R3*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R0*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R3*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R6*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R7*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R6*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R0*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)) - R6*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2) + R3*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))
-        F_vec[4] = (R2*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R1*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R4*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R1*((R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R7*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))) + (R5*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R3*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R1*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R4*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R7*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R7*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R6*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R1*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)) - R7*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2) + R4*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))
-        F_vec[5] = (R2*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R1*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R0*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R5*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R2*((R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R8*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))) + (R5*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R4*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R3*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R2*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx)) - R5*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))^2) + R8*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx))) + (R8*(nz_dot + ox_dot*ry - oy_dot*rx + ox*(ny + oz*rx) - oy*(nx - oz*ry)) + R7*(ny_dot - ox*(nz + ox*ry - oy*rx) + oz_dot*rx + oz*(nx - oz*ry)) + R6*(nx_dot + oy*(nz + ox*ry - oy*rx) - oz_dot*ry - oz*(ny + oz*rx)))*(R2*(R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)) - R8*((R2*(nz + ox*ry - oy*rx) + R0*(nx - oz*ry) + R1*(ny + oz*rx))^2 + (R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))^2) + R5*(R5*(nz + ox*ry - oy*rx) + R3*(nx - oz*ry) + R4*(ny + oz*rx))*(R8*(nz + ox*ry - oy*rx) + R6*(nx - oz*ry) + R7*(ny + oz*rx)))
-
-
-        */
 
         for (j=0;j<6;j++) {
             temp_vec[j]=gsl_matrix_get(temp_mat,j,0);
@@ -493,7 +518,7 @@ void timeDerivative(double r[], double *q, double *delta, double *y, double *xi_
             /* skew(r) * res */
             gsl_blas_dgemm(CblasNoTrans,CblasNoTrans,1.0,r_skew,temp_mat4,0.0,p_ddot);
 
-            F = tcaForce(delta[j],q[j]);
+            F = tcaForce(m,delta[i*N+j],q[j]);
             pi_dot_norm = pow(sqrt(pow(nz + ox*ry - oy*rx,2.0) + pow(ny + oz*rx,2.0) + pow(nx - oz*ry,2.0)),3.0);
 
             F_vec[0] += (-F/pi_dot_norm)*gsl_matrix_get(p_ddot,0,0);
@@ -660,7 +685,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
 
     /* integrate stuff */
     double xi[6*n];
-    double delta[N];
+    double delta[n*N];
     double g[12*n];
     integrateStates(dt,ds,r,eta,eta_prev,xi_prev,xi,g,delta,N,n);
 
@@ -734,7 +759,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
     for (i=0;i<N;i++) {
         rx = r[i*N+0];
         ry = r[i*N+1];
-        F = -tcaForce(delta[i],q[i]);
+        F = -tcaForce(n,delta[N*(n-1)+i],q[i]);
 
 
         s_norm = sqrt((pow(nz + ox*ry - oy*rx,2.0) + pow(ny + oz*rx,2.0) + pow(nx - oz*ry,2.0)));
