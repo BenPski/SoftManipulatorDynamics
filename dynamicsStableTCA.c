@@ -50,10 +50,6 @@ double tcaForce(int k, double delta, double temp) {
     double I = J/2;
     double A_a = N*M_PI*pow(d_thread,2)/4;
     double Tau = (J*G*phi0/l)*(1-d_thread/d_thread0);
-    //double R = D/2;
-    //double alpha = asin(delta/L+sin(alpha0));
-    //double f11 = 0.5*l*((pow(R,2)*(pow(cos(alpha),2))/(G*J))+(pow(R,2)*(pow(sin(alpha),2))/(E*I))+((pow(cos(alpha),2))/(G*A_a))+((pow(sin(alpha),2))/(E*A_a)));
-    //double f12 = l*R*cos(alpha)/(2*G*J);
     
     //rewrite for f11 and f12
     double a0 = (2*pow(sin(alpha0),2)/E-2*pow(sin(alpha0),4)/E-2*pow(sin(alpha0),2)/G+pow(sin(alpha0),4)/G+1/G)*k;
@@ -202,12 +198,6 @@ void integrateStates(double dt, double ds, double *r, double *eta, double *eta_p
         delta[j] = ds*(sqrt(pow(vx - ry*wz,2.0)+pow(vy + rx*wz,2.0)+pow(vz - rx*wy + ry*wx,2.0))-1);
     }
     
-    /*xi[5] = xi[5] + 1.0;*/
-
-    //for (i=0;i<N;i++) {
-    //    delta[i] = 0;
-    //}
-
     for (i=1;i<n;i++) {
         /* compute xi and xi_acc */
         // compute the adjoint term separately
@@ -290,9 +280,6 @@ void integrateStates(double dt, double ds, double *r, double *eta, double *eta_p
 
 
     }
-    //for (i=0;i<N;i++) {
-    //    delta[i] = delta[i]-0.04; /* delta-L_i */
-    //}
     
 }
 
@@ -646,7 +633,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
         }
     }
 
-
     /* eta_prev */
     double eta_prev[6*n], *eta_prev_trans;
     eta_prev_trans = mxGetPr(prhs[2]);
@@ -656,7 +642,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
             eta_prev[6*i+j] = eta_prev_trans[j*n+i];
         }
     }
-
 
     /* xi_prev */
     double xi_prev[6*n], *xi_prev_trans;
@@ -668,10 +653,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
         }
     }
 
-
     /* time step */
     double dt = mxGetPr(prhs[4])[0];
-
 
     /* setup r and dx */
     double ds = L/(n-1);
