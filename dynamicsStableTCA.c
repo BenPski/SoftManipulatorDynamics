@@ -91,7 +91,6 @@ void approxDerivatives(double dx, double *xi, double *xi_dot, int n) {
             //xi_dot[i*6+j] = (xi[j+6*(i)]-xi[j+6*(i-1)])/(dx);
         }
     }
-
 }
 void skew(gsl_matrix *a, gsl_matrix *a_skew) {
     gsl_matrix_set(a_skew,0,0,0);
@@ -169,7 +168,7 @@ void integrateStates(double dt, double ds, double *r, double *eta, double *eta_p
 
     this also assumes that xi and eta both already have the correct initial values (mostly important for xi and splitting of guessed values)
     */
-    double rx,ry, wx,wy,wz,vx,vy,vz, ox,oy,oz,nx,ny,nz, wx_p,wy_p,wz_p,vx_p,vy_p,vz_p, R0,R1,R2,R3,R4,R5,R6,R7,R8;
+    double rx,ry, wx,wy,wz,vx,vy,vz, ox,oy,oz,nx,ny,nz;
     double xi_acc[6], xi_acc_temp[6], g_temp[16];
 
     /* initial g is R=I, p = 0 */
@@ -248,12 +247,6 @@ void integrateStates(double dt, double ds, double *r, double *eta, double *eta_p
         vy = xi[i*6+4];
         vz = xi[i*6+5];
 
-        wx_p = xi[(i-1)*6+0];
-        wy_p = xi[(i-1)*6+1];
-        wz_p = xi[(i-1)*6+2];
-        vx_p = xi[(i-1)*6+3];
-        vy_p = xi[(i-1)*6+4];
-        vz_p = xi[(i-1)*6+5];
         for (j=0;j<N;j++) {
             rx = r[j*N];
             ry = r[j*N+1];
@@ -276,8 +269,6 @@ void integrateStates(double dt, double ds, double *r, double *eta, double *eta_p
         g[12*i+9] = g_temp[4*0+3];
         g[12*i+10] = g_temp[4*1+3];
         g[12*i+11] = g_temp[4*2+3];
-
-
 
     }
     
