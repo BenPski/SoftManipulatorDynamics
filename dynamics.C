@@ -928,6 +928,7 @@ void dynamicsComputation(struct SystemParameters sys_params, struct BodyParamete
 
 /*
  *Wrappers around common arithmetic functions
+ *never actually using these
  */
 
 //A*B = C
@@ -976,12 +977,6 @@ int dynamicsFunction(const gsl_vector *x, void *params, gsl_vector *conditions) 
 
     //rearrange the input, x -> (xi0, eta);
     int i, j;
-    /*
-    for (i=0;i<6*n;i++) {
-        printf("%g, ",gsl_vector_get(x,i));
-    }
-    printf("\n");
-    */
     for (i=1;i<n;i++) {
         for (j=0;j<6;j++) {
             gsl_matrix_set(eta,i,j,gsl_vector_get(x,i*6+j));
@@ -995,179 +990,45 @@ int dynamicsFunction(const gsl_vector *x, void *params, gsl_vector *conditions) 
     //run the computation
     dynamicsComputation(sys_params, body_params, act_params, eta, eta_prev, xi_prev, g, xi, conditions);
 
-    /*
-    printf("Matrices: \n");
-    printMatrix(g);
-    printMatrix(xi);
-    printMatrix(eta);
-    printMatrix(eta_prev);
-    printMatrix(xi_prev);
-    */
     return GSL_SUCCESS;
 }
 
-
-/*
-int main(void) {
-    //just testing to see if the fucntions work
-
-    int n = 5;
-    int N = 3;
-    double L = 0.04;
-    double p = 1000;
-    double E = 37.8e3;
-    double G = E/3;
-    double D = 1e-2;
-    double R = D/2;
-    double A = M_PI*R*R;
-    double I = M_PI*pow(D,4)/32;
-    double J = 2*I;
-
-    double dt = 0.01;
-    double ds = L/(n-1);
-    gsl_matrix *g0 = gsl_matrix_alloc(4,4);
-    gsl_matrix_set_identity(g0);
-    gsl_vector *xi0 = gsl_vector_calloc(6);
-    gsl_vector_set(xi0,5,1);
-    gsl_vector *xi_ref = gsl_vector_calloc(6);
-    gsl_vector_set(xi_ref,5,1);
-    gsl_vector *eta0 = gsl_vector_calloc(6);
-
-    gsl_vector *q = gsl_vector_calloc(N);
-    gsl_vector_set(q,0,0);
-    gsl_vector_set(q,1,0);
-    gsl_vector_set(q,2,0);
-
-
-    struct SystemParameters sys_params = { dt, ds, n, N, g0, eta0, xi0, q, false};
-    struct BodyParameters body_params = { E, G, p, J, I, A, R, L, xi_ref};
-    struct ActuatorParameters act_params;
-    act_params.rx = rx_fun;
-    act_params.ry = ry_fun;
-    act_params.force = cableForce;
-
-
-    gsl_matrix *eta = gsl_matrix_alloc(n,6);
-    gsl_matrix *eta_prev = gsl_matrix_alloc(n,6);
-    gsl_matrix *xi_prev = gsl_matrix_alloc(n,6);
-    gsl_matrix *g = gsl_matrix_alloc(n,12);
-    gsl_matrix *xi = gsl_matrix_alloc(n,6);
-    gsl_vector *conditions = gsl_vector_alloc(n*6);
-
-    gsl_matrix_set_zero(eta);
-    gsl_matrix_set_zero(eta_prev);
-    gsl_matrix_set_zero(xi_prev);
-    int i;
-    for (i=0;i<n;i++) {
-        gsl_matrix_set(xi_prev,i,5,1);
-    }
-
-    dynamicsComputation(sys_params, body_params, act_params, eta, eta_prev, xi_prev, g, xi, conditions);
-
-    printMatrix(g);
-    printMatrix(xi);
-
-    printVector(conditions);
-
-
-    gsl_matrix_free(g0);
-    gsl_vector_free(xi0);
-    gsl_vector_free(xi_ref);
-    gsl_vector_free(eta0);
-
-    gsl_vector_free(q);
-
-    gsl_matrix_free(eta);
-    gsl_matrix_free(eta_prev);
-    gsl_matrix_free(xi);
-    gsl_matrix_free(xi_prev);
-    gsl_matrix_free(g);
-
-    gsl_vector_free(conditions);
-
-
-    return 0;
-}
- */
-
-
-int main(void) {
-
-    //setup for system
-    const size_t n = 10;
-    const size_t N = 3;
-    double L = 0.04;
-    double p = 1000;
-    double E = 37.8e3;
-    double G = E/3;
-    double D = 1e-2;
-    double R = D/2;
-    double A = M_PI*R*R;
-    double I = M_PI*pow(D,4)/32;
-    double J = 2*I;
-
-    double dt = 0.001;
-    double ds = L/(n-1);
-    gsl_matrix *g0 = gsl_matrix_alloc(4,4);
-    gsl_matrix_set_identity(g0);
-    gsl_vector *xi0 = gsl_vector_alloc(6);
-    gsl_vector_set_zero(xi0);
-    gsl_vector_set(xi0,5,1);
-    gsl_vector *xi_ref = gsl_vector_alloc(6);
-    gsl_vector_set_zero(xi_ref);
-    gsl_vector_set(xi_ref,5,1);
-    gsl_vector *eta0 = gsl_vector_alloc(6);
-    gsl_vector_set_zero(eta0);
-
-    gsl_vector *q = gsl_vector_calloc(N);
-    gsl_vector_set(q,0,0.1);
-    gsl_vector_set(q,1,0);
-    gsl_vector_set(q,2,0);
-
-
-    struct SystemParameters sys_params = { dt, ds, n, N, g0, eta0, xi0, q, false};
-    struct BodyParameters body_params = { E, G, p, J, I, A, R, L, xi_ref};
-    struct ActuatorParameters act_params;
-    act_params.rx = rx_fun;
-    act_params.ry = ry_fun;
-    act_params.force = cableForce;
-
-    gsl_matrix *eta = gsl_matrix_alloc(n,6);
-    gsl_matrix *eta_prev = gsl_matrix_alloc(n,6);
-    gsl_matrix *xi_prev = gsl_matrix_alloc(n,6);
-    gsl_matrix *g = gsl_matrix_alloc(n,12);
-    gsl_matrix *xi = gsl_matrix_alloc(n,6);
-
-    gsl_matrix_set_zero(eta);
-    gsl_matrix_set_zero(eta_prev);
-    gsl_matrix_set_zero(xi_prev);
-    gsl_matrix_set_zero(g);
-    gsl_matrix_set_zero(xi);
-    int j;
-    for (j=0;j<n;j++) {
-        gsl_matrix_set(xi_prev,j,5,1);
-    }
-
-    struct SimulationParameters params = {body_params, sys_params, act_params, g, xi, xi_prev, eta_prev, eta};
-
-
-    //setup the solver
-
+//the dynamics stepping function
+//given the current solution and the system parameters move to the next step
+void stepDynamics(struct SimulationParameters sim_params) {
+    
+    //need to move eta_prev and xi_prev forward 
+    
+    struct BodyParameters body_params = sim_params.body_params;
+    struct SystemParameters sys_params = sim_params.sys_params;
+    struct ActuatorParameters act_params = sim_params.act_params;
+    
+    int n = sys_params.n;
+    gsl_vector *xi_ref = body_params.xi_ref;
+    gsl_matrix *eta = sim_params.eta;
+    
     const gsl_multiroot_fsolver_type *T;
     gsl_multiroot_fsolver *s;
 
     int status;
-    size_t i, iter=0;
+    size_t iter=0;
+    int i,j;
 
     const size_t sys_size = 6*n;
-    gsl_multiroot_function f = {&dynamicsFunction, sys_size, &params};
+    gsl_multiroot_function f = {&dynamicsFunction, sys_size, &sim_params};
 
     gsl_vector *x = gsl_vector_alloc(sys_size);
 
-    gsl_vector_set_zero(x);
+    //initialize the guessed solution
     for (j=0;j<6;j++) {
         gsl_vector_set(x,j,gsl_vector_get(xi_ref,j));
     }
+    for (i=1;i<n;i++) {
+        for (j=0;j<6;j++) {
+            gsl_vector_set(x,i*6+j,gsl_matrix_get(eta,i,j));
+        }
+    }
+    
 
     T = gsl_multiroot_fsolver_hybrids;
     s = gsl_multiroot_fsolver_alloc(T, sys_size);
@@ -1197,126 +1058,101 @@ int main(void) {
 
     printf("Condition norm: %f\n", gsl_blas_dnrm2(s->f));
 
-    printMatrix(params.xi);
-    printMatrix(params.g);
-    printMatrix(params.eta);
-    printMatrix(params.eta_prev);
-    printMatrix(params.xi_prev);
+    gsl_matrix_memcpy(sim_params.xi_prev,sim_params.xi);
+    gsl_matrix_memcpy(sim_params.eta_prev,sim_params.eta);
+    
+    printMatrix(sim_params.xi);
+    printMatrix(sim_params.g);
+    printMatrix(sim_params.eta);
+    printMatrix(sim_params.eta_prev);
+    printMatrix(sim_params.xi_prev);
 
 
     //free up everything
     gsl_multiroot_fsolver_free(s);
 
     gsl_vector_free(x);
-
-    gsl_matrix_free(g0);
-    gsl_vector_free(xi0);
-    gsl_vector_free(xi_ref);
-    gsl_vector_free(eta0);
-
-    gsl_vector_free(q);
-
-    gsl_matrix_free(eta);
-    gsl_matrix_free(eta_prev);
-    gsl_matrix_free(xi);
-    gsl_matrix_free(xi_prev);
-    gsl_matrix_free(g);
-
-
-
-    return 0;
 }
 
-/*
+
+
 int main(void) {
 
-    //need to test the individual functions, too hard to figure out all at once
+    //setup for system
+    const size_t n = 10;
+    const size_t N = 3;
+    double L = 0.04;
+    double p = 1000;
+    double E = 37.8e3;
+    double G = E/3;
+    double D = 1e-2;
+    double R = D/2;
+    double A = M_PI*R*R;
+    double I = M_PI*pow(D,4)/32;
+    double J = 2*I;
 
-    //start with checking the integration
-    int n = 10;
-    int N = 3;
     double dt = 0.01;
-    double ds = 0.04/(n-1);
+    double ds = L/(n-1);
     gsl_matrix *g0 = gsl_matrix_alloc(4,4);
     gsl_matrix_set_identity(g0);
-    gsl_vector *eta0 = gsl_vector_alloc(6);
-    gsl_vector_set_zero(eta0);
     gsl_vector *xi0 = gsl_vector_alloc(6);
     gsl_vector_set_zero(xi0);
     gsl_vector_set(xi0,5,1);
-    gsl_vector *q = gsl_vector_alloc(N);
-    gsl_vector_set_zero(q);
-
-    struct SystemParameters sys_params = { dt, ds, n, N, g0, eta0, xi0, q, false};
-
-    gsl_matrix *eta = gsl_matrix_alloc(n,6);
-    gsl_matrix *xi_prev = gsl_matrix_alloc(n,6);
-    gsl_matrix *g = gsl_matrix_alloc(n,12);
-    gsl_matrix *xi = gsl_matrix_alloc(n,6);
-
-    gsl_matrix_set_zero(eta);
-    gsl_matrix_set_zero(xi_prev);
-    int i;
-    for (i=0;i<n;i++) {
-        gsl_matrix_set(xi_prev,i,5,1+i*0.1);
-    }
-
-    integrate(sys_params, eta, xi_prev, g, xi);
-
-    //now the derivative for xi
-    gsl_matrix *xi_dot = gsl_matrix_alloc(n,6);
-
-    approxDerivatives(sys_params, xi, xi_dot);
-
-    //now the time derivative
-    double E = 37.8e3;
-    double G = E/3;
-    double p = 1000;
-    double D = 1e-2;
-    double L = 4e-2;
-    double R = D/2;
-    double A = M_PI*R*R;
-    double I = M_PI/32*pow(R,4);
-    double J = 2*I;
     gsl_vector *xi_ref = gsl_vector_alloc(6);
     gsl_vector_set_zero(xi_ref);
     gsl_vector_set(xi_ref,5,1);
+    gsl_vector *eta0 = gsl_vector_alloc(6);
+    gsl_vector_set_zero(eta0);
 
+    gsl_vector *q = gsl_vector_calloc(N);
+    gsl_vector_set(q,0,0);
+    gsl_vector_set(q,1,0);
+    gsl_vector_set(q,2,0);
+
+
+    struct SystemParameters sys_params = { dt, ds, n, N, g0, eta0, xi0, q, false};
     struct BodyParameters body_params = { E, G, p, J, I, A, R, L, xi_ref};
     struct ActuatorParameters act_params;
     act_params.rx = rx_fun;
     act_params.ry = ry_fun;
     act_params.force = cableForce;
 
-    gsl_matrix *eta_der = gsl_matrix_calloc(n,6);
-    timeDerivative(sys_params, body_params, act_params, g, xi, eta, xi_dot, eta_der);
-
-    //now the boundary conditions
-    gsl_vector *conditions = gsl_vector_alloc(6*n);
+    gsl_matrix *eta = gsl_matrix_alloc(n,6);
     gsl_matrix *eta_prev = gsl_matrix_alloc(n,6);
+    gsl_matrix *xi_prev = gsl_matrix_alloc(n,6);
+    gsl_matrix *g = gsl_matrix_alloc(n,12);
+    gsl_matrix *xi = gsl_matrix_alloc(n,6);
+
+    gsl_matrix_set_zero(eta);
     gsl_matrix_set_zero(eta_prev);
-    boundaryConditions(sys_params, body_params, act_params, eta, eta_prev, eta_der, xi, conditions);
+    gsl_matrix_set_zero(xi_prev);
+    gsl_matrix_set_zero(g);
+    gsl_matrix_set_zero(xi);
+    int j;
+    for (j=0;j<n;j++) {
+        gsl_matrix_set(xi_prev,j,5,1);
+    }
 
-    printVector(conditions);
+    struct SimulationParameters params = {body_params, sys_params, act_params, g, xi, xi_prev, eta_prev, eta};
 
-    gsl_vector_free(conditions);
-    gsl_matrix_free(eta_prev);
-
-    gsl_vector_free(xi_ref);
-
-    gsl_matrix_free(eta_der);
-    gsl_matrix_free(xi_dot);
-
-    gsl_matrix_free(eta);
-    gsl_matrix_free(xi_prev);
-    gsl_matrix_free(g);
-    gsl_matrix_free(xi);
+    for (j=0;j<100;j++) {
+    
+        stepDynamics(params);
+    }
 
     gsl_matrix_free(g0);
-    gsl_vector_free(eta0);
     gsl_vector_free(xi0);
+    gsl_vector_free(xi_ref);
+    gsl_vector_free(eta0);
+
     gsl_vector_free(q);
+
+    gsl_matrix_free(eta);
+    gsl_matrix_free(eta_prev);
+    gsl_matrix_free(xi);
+    gsl_matrix_free(xi_prev);
+    gsl_matrix_free(g);
 
     return 0;
 }
-*/
+
