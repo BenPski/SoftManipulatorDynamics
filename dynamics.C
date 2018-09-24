@@ -407,7 +407,7 @@ void approxDerivatives(const struct SystemParameters sys_params, const gsl_matri
 
     //intermediate points
     //centered diff
-    /*
+
     for (i=1;i<n-1;i++) {
         xi_dot_view = gsl_matrix_row(xi_dot,i);
         gsl_matrix_get_row(xi_ahead,xi,i+1);
@@ -417,9 +417,10 @@ void approxDerivatives(const struct SystemParameters sys_params, const gsl_matri
         gsl_vector_sub(&xi_dot_view.vector,xi_behind);
         gsl_vector_scale(&xi_dot_view.vector,1/(2*ds));
     }
-    */
+
 
     //backward diff
+    /*
     for (i=1;i<n-1;i++) {
         xi_dot_view = gsl_matrix_row(xi_dot,i);
         gsl_matrix_get_row(xi_ahead,xi,i);
@@ -429,6 +430,7 @@ void approxDerivatives(const struct SystemParameters sys_params, const gsl_matri
         gsl_vector_sub(&xi_dot_view.vector,xi_behind);
         gsl_vector_scale(&xi_dot_view.vector,1/(ds));
     }
+    */
 
     gsl_vector_free(xi_ahead);
     gsl_vector_free(xi_behind);
@@ -492,7 +494,7 @@ void integrate(struct SystemParameters sys_params, const gsl_matrix *eta, const 
         gsl_matrix_get_row(xi_row_off,xi,i-1);
 
         //do the adjoint portion of equation
-        gsl_blas_dgemv(CblasNoTrans,-dt,xi_adj,eta_row,1.0,xi_row);
+        gsl_blas_dgemv(CblasNoTrans,dt,xi_adj,eta_row,1.0,xi_row);
         gsl_matrix_set_row(xi,i,xi_row);
 
         //do the accumulated xi
@@ -996,17 +998,15 @@ int dynamicsFunction(const gsl_vector *x, void *params, gsl_vector *conditions) 
 //the dynamics stepping function
 //given the current solution and the system parameters move to the next step
 void stepDynamics(struct SimulationParameters sim_params) {
-    
-    //need to move eta_prev and xi_prev forward 
-    
+
+    //need to move eta_prev and xi_prev forward
+
     struct BodyParameters body_params = sim_params.body_params;
     struct SystemParameters sys_params = sim_params.sys_params;
     struct ActuatorParameters act_params = sim_params.act_params;
-    
+
     int n = sys_params.n;
-    gsl_vector *xi_ref = body_params.xi_ref;
-    gsl_matrix *eta = sim_params.eta;
-    
+
     const gsl_multiroot_fsolver_type *T;
     gsl_multiroot_fsolver *s;
 
@@ -1021,14 +1021,14 @@ void stepDynamics(struct SimulationParameters sim_params) {
 
     //initialize the guessed solution
     for (j=0;j<6;j++) {
-        gsl_vector_set(x,j,gsl_vector_get(xi_ref,j));
+        gsl_vector_set(x,j,gsl_vector_get(body_params.xi_ref,j));
     }
     for (i=1;i<n;i++) {
         for (j=0;j<6;j++) {
-            gsl_vector_set(x,i*6+j,gsl_matrix_get(eta,i,j));
+            gsl_vector_set(x,i*6+j,gsl_matrix_get(sim_params.eta,i,j));
         }
     }
-    
+
 
     T = gsl_multiroot_fsolver_hybrids;
     s = gsl_multiroot_fsolver_alloc(T, sys_size);
@@ -1058,9 +1058,8 @@ void stepDynamics(struct SimulationParameters sim_params) {
 
     printf("Condition norm: %f\n", gsl_blas_dnrm2(s->f));
 
-    gsl_matrix_memcpy(sim_params.xi_prev,sim_params.xi);
-    gsl_matrix_memcpy(sim_params.eta_prev,sim_params.eta);
-    
+
+
     printMatrix(sim_params.xi);
     printMatrix(sim_params.g);
     printMatrix(sim_params.eta);
@@ -1079,8 +1078,8 @@ void stepDynamics(struct SimulationParameters sim_params) {
 int main(void) {
 
     //setup for system
-    const size_t n = 10;
-    const size_t N = 3;
+    const int n = 10;
+    const int N = 3;
     double L = 0.04;
     double p = 1000;
     double E = 37.8e3;
@@ -1105,7 +1104,7 @@ int main(void) {
     gsl_vector_set_zero(eta0);
 
     gsl_vector *q = gsl_vector_calloc(N);
-    gsl_vector_set(q,0,0);
+    gsl_vector_set(q,0,0.01);
     gsl_vector_set(q,1,0);
     gsl_vector_set(q,2,0);
 
@@ -1136,8 +1135,9 @@ int main(void) {
     struct SimulationParameters params = {body_params, sys_params, act_params, g, xi, xi_prev, eta_prev, eta};
 
     for (j=0;j<100;j++) {
-    
         stepDynamics(params);
+        gsl_matrix_memcpy(params.xi_prev,params.xi);
+        gsl_matrix_memcpy(params.eta_prev,params.eta);
     }
 
     gsl_matrix_free(g0);
@@ -1155,4 +1155,3 @@ int main(void) {
 
     return 0;
 }
-
