@@ -21,19 +21,19 @@
  * very simplistic printing functions, mostly for debugging
  */
 
-void printVector(gsl_vector *v) {
+void printVector(const gsl_vector *v) {
     int size = v->size;
     
     printf("Vector:\n");
     
     int i;
     for (i=0;i<size;i++) {
-        printf("%g\n",gsl_vector_get(v,i));
+        printf("%f\n",gsl_vector_get(v,i));
     }
     printf("\n");
 }
 
-void printMatrix(gsl_matrix *m) {
+void printMatrix(const gsl_matrix *m) {
     int height = m->size1;
     int width = m->size2;
     
@@ -42,9 +42,9 @@ void printMatrix(gsl_matrix *m) {
     int i,j;
     for (i=0;i<height;i++) {
         for (j=0;j<width-1;j++) {
-            printf("%g ", gsl_matrix_get(m,i,j));
+            printf("%f ", gsl_matrix_get(m,i,j));
         }
-        printf("%g\n", gsl_matrix_get(m,i,width-1));
+        printf("%f\n", gsl_matrix_get(m,i,width-1));
     }
     printf("\n");
 }
@@ -104,7 +104,7 @@ struct ActuatorParameters {
 //the isomorphisms between R3 and skew matrices
 //computes the skew matrix of a 3d vector
 //not very safe and I have avoided using vectors and just had matrices for everything
-void skew(gsl_vector *a, gsl_matrix *a_skew) {
+void skew(const gsl_vector *a, gsl_matrix *a_skew) {
     gsl_matrix_set(a_skew,0,0,0);
     gsl_matrix_set(a_skew,0,1,-gsl_vector_get(a,2));
     gsl_matrix_set(a_skew,0,2,gsl_vector_get(a,1));
@@ -116,7 +116,7 @@ void skew(gsl_vector *a, gsl_matrix *a_skew) {
     gsl_matrix_set(a_skew,2,2,0);
 }
 
-void unskew(gsl_matrix *a_skew, gsl_vector *a) {
+void unskew(const gsl_matrix *a_skew, gsl_vector *a) {
     gsl_vector_set(a,0,gsl_matrix_get(a_skew,2,1));
     gsl_vector_set(a,1,gsl_matrix_get(a_skew,0,2));
     gsl_vector_set(a,2,gsl_matrix_get(a_skew,1,0));
@@ -125,9 +125,9 @@ void unskew(gsl_matrix *a_skew, gsl_vector *a) {
 
 //the isomorphisms for the se(3) algebra, go between R6 and se(3)
 //can make use of the skew isomorphisms
-void se(gsl_vector *a, gsl_matrix *a_se) {
-    gsl_vector_view ang = gsl_vector_subvector(a,0,3); //the angular portion
-    gsl_vector_view trans = gsl_vector_subvector(a,3,3); //the translational portion
+void se(const gsl_vector *a, gsl_matrix *a_se) {
+    gsl_vector_const_view ang = gsl_vector_const_subvector(a,0,3); //the angular portion
+    gsl_vector_const_view trans = gsl_vector_const_subvector(a,3,3); //the translational portion
     
     int i;
     
@@ -142,7 +142,7 @@ void se(gsl_vector *a, gsl_matrix *a_se) {
     }
 }
 
-void unse(gsl_matrix *a_se, gsl_vector *a) {
+void unse(const gsl_matrix *a_se, gsl_vector *a) {
     //could use submatrices, but it should work out properly
     unskew(a_se,a);
     int i;
@@ -154,7 +154,7 @@ void unse(gsl_matrix *a_se, gsl_vector *a) {
 //the isomorphisms for the configuration
 //can either flatten and unflatten the config
 //or can extract the angles and create the rotation from it
-void flattenConfig(gsl_matrix *m, gsl_vector *v) {
+void flattenConfig(const gsl_matrix *m, gsl_vector *v) {
     //know some portions are constant so ignore
     int i,j;
     for (i=0;i<3;i++) {
@@ -166,7 +166,7 @@ void flattenConfig(gsl_matrix *m, gsl_vector *v) {
         gsl_vector_set(v,9+i,gsl_matrix_get(m,i,3));
     }
 }
-void unflattenConfig(gsl_vector *v, gsl_matrix *m) {
+void unflattenConfig(const gsl_vector *v, gsl_matrix *m) {
     int i,j;
     for (i=0;i<3;i++) {
         for (j=0;j<3;j++) {
@@ -183,7 +183,7 @@ void unflattenConfig(gsl_vector *v, gsl_matrix *m) {
 
 //given a rotation matrix get the angles
 //https://d3cw3dd2w32x2b.cloudfront.net/wp-content/uploads/2012/07/euler-angles1.pdf
-void extractAngles(gsl_matrix *R, gsl_vector *angles) {
+void extractAngles(const gsl_matrix *R, gsl_vector *angles) {
     
     double theta1 = atan2(gsl_matrix_get(R,1,2),gsl_matrix_get(R,2,2));
     gsl_vector_set(angles,0,theta1);
@@ -198,9 +198,9 @@ void extractAngles(gsl_matrix *R, gsl_vector *angles) {
     gsl_vector_set(angles,2,theta3);
 }
 
-void rotation_x(double theta, gsl_matrix *R) {
-    double c = cos(theta);
-    double s = sin(theta);
+void rotation_x(const double theta, gsl_matrix *R) {
+    const double c = cos(theta);
+    const double s = sin(theta);
     //cos terms
     gsl_matrix_set(R,1,1,c);
     gsl_matrix_set(R,2,2,c);
@@ -215,9 +215,9 @@ void rotation_x(double theta, gsl_matrix *R) {
     gsl_matrix_set(R,1,0,0);
     gsl_matrix_set(R,2,0,0);
 }
-void rotation_y(double theta, gsl_matrix *R) {
-    double c = cos(theta);
-    double s = sin(theta);
+void rotation_y(const double theta, gsl_matrix *R) {
+    const double c = cos(theta);
+    const double s = sin(theta);
     //cos terms
     gsl_matrix_set(R,0,0,c);
     gsl_matrix_set(R,2,2,c);
@@ -232,9 +232,9 @@ void rotation_y(double theta, gsl_matrix *R) {
     gsl_matrix_set(R,2,1,0);
     gsl_matrix_set(R,1,0,0);
 }
-void rotation_z(double theta, gsl_matrix *R) {
-    double c = cos(theta);
-    double s = sin(theta);
+void rotation_z(const double theta, gsl_matrix *R) {
+    const double c = cos(theta);
+    const double s = sin(theta);
     //cos terms
     gsl_matrix_set(R,0,0,c);
     gsl_matrix_set(R,1,1,c);
@@ -252,9 +252,9 @@ void rotation_z(double theta, gsl_matrix *R) {
 
 //the inverse of extract angles
 //note these functions are not one-to-one so can end up swapping around the actual angles, but have consistent rotation matrices
-void rotation(gsl_vector *angles,gsl_matrix *R) {
-    gsl_matrix *Ry = gsl_matrix_alloc(3,3);
-    gsl_matrix *Rz = gsl_matrix_alloc(3,3);
+void rotation(const gsl_vector *angles,gsl_matrix *R) {
+    gsl_matrix *Ry = gsl_matrix_calloc(3,3);
+    gsl_matrix *Rz = gsl_matrix_calloc(3,3);
     gsl_matrix *A = gsl_matrix_calloc(3,3); //just a temp matrix to compy into
     
     rotation_x(gsl_vector_get(angles,0),R);
@@ -270,7 +270,7 @@ void rotation(gsl_vector *angles,gsl_matrix *R) {
 }
 
 //extract angles and translations, ordered as [angles,positions]
-void extractConfig(gsl_matrix *g, gsl_vector *v) {
+void extractConfig(const gsl_matrix *g, gsl_vector *v) {
     extractAngles(g,v); //should copy to right place
     int i;
     for (i=0;i<3;i++) {
@@ -278,7 +278,7 @@ void extractConfig(gsl_matrix *g, gsl_vector *v) {
     }
 }
 
-void unextractConfig(gsl_vector *v, gsl_matrix *g) {
+void unextractConfig(const gsl_vector *v, gsl_matrix *g) {
     rotation(v,g); //should line up properly
     int i;
     for (i=0;i<3;i++) {
@@ -289,12 +289,12 @@ void unextractConfig(gsl_vector *v, gsl_matrix *g) {
 }
             
 //the adjoint representation of a vector in se(3)
-void adjoint(gsl_vector *alg, gsl_matrix *adj) {
-    gsl_matrix *w_skew = gsl_matrix_alloc(3,3);
-    gsl_matrix *v_skew = gsl_matrix_alloc(3,3);
+void adjoint(const gsl_vector *alg, gsl_matrix *adj) {
+    gsl_matrix *w_skew = gsl_matrix_calloc(3,3);
+    gsl_matrix *v_skew = gsl_matrix_calloc(3,3);
     
-    gsl_vector_view w = gsl_vector_subvector(alg,0,3);
-    gsl_vector_view v = gsl_vector_subvector(alg,3,3);
+    gsl_vector_const_view w = gsl_vector_const_subvector(alg,0,3);
+    gsl_vector_const_view v = gsl_vector_const_subvector(alg,3,3);
     
     skew(&w.vector,w_skew);
     skew(&v.vector,v_skew);
@@ -314,7 +314,7 @@ void adjoint(gsl_vector *alg, gsl_matrix *adj) {
 
 //the matrix exponential for SE(3)
 //annoying to check for what the representation of the algebra, so just allow a vector
-void expSE(gsl_vector *alg, gsl_matrix *group) {
+void expSE(const gsl_vector *alg, gsl_matrix *group) {
 
     double a,b,c,d;
     double wx,wy,wz,vx,vy,vz;
@@ -372,53 +372,85 @@ void expSE(gsl_vector *alg, gsl_matrix *group) {
  */
 
 // could make it more generically take matrices/vectors
-void approxDerivatives(struct SystemParameters sys_params, gsl_matrix *xi, gsl_matrix *xi_dot) {
+//can also make this a banded matrix multiplication
+void approxDerivatives(const struct SystemParameters sys_params, const gsl_matrix *xi, gsl_matrix *xi_dot) {
     double ds = sys_params.ds;
     int n = sys_params.n;
     int i, j;
-    gsl_vector *xi_row_ahead = gsl_vector_alloc(6);
-    gsl_vector *xi_row_behind = gsl_vector_alloc(6);
-    gsl_vector_view xi_dot_view;
     
-    gsl_matrix_set_zero(xi_dot);
+    /*
+    //do it with matrices
+    gsl_spmatrix *diff = gsl_spmatrix_alloc(n,n);
+    //the matrix has -1,1 for first and last rows and -1/2,0,1/2 for all other rows
+    gsl_spmatrix_set(diff,0,0,-1);
+    gsl_spmatrix_set(diff,0,1,1);
+    gsl_spmatrix_set(diff,n-1,n-2,-1);
+    gsl_spmatrix_set(diff,n-1,n-1,1);
+    for (i=1;i<n-1;i++) {
+        gsl_spmatrix_set(diff,i,i-1,-1/2);
+        gsl_spmatrix_set(diff,i,i+1,1/2);
+    }
+    gsl_spmatrix_scale(diff,1/ds);
+    
+    */
+    
+
+    gsl_vector_view xi_dot_view;
+    gsl_vector *xi_ahead = gsl_vector_calloc(6);
+    gsl_vector *xi_behind = gsl_vector_calloc(6);
+    
+    //gsl_matrix_set_zero(xi_dot);
     
     /* first point and last point approximation */
     //first point
     xi_dot_view = gsl_matrix_row(xi_dot,0);
-    gsl_matrix_get_row(xi_row_ahead,xi,1);
-    gsl_matrix_get_row(xi_row_behind,xi,0);
+    gsl_matrix_get_row(xi_ahead,xi,1);
+    gsl_matrix_get_row(xi_behind,xi,0);
     
-    gsl_vector_add(&xi_dot_view.vector,xi_row_ahead);
-    gsl_vector_sub(&xi_dot_view.vector,xi_row_behind);
+    gsl_vector_add(&xi_dot_view.vector,xi_ahead);
+    gsl_vector_sub(&xi_dot_view.vector,xi_behind);
     gsl_vector_scale(&xi_dot_view.vector,1/ds);
     
     //last point
     xi_dot_view = gsl_matrix_row(xi_dot,n-1);
-    gsl_matrix_get_row(xi_row_ahead,xi,n-1);
-    gsl_matrix_get_row(xi_row_behind,xi,n-2);
+    gsl_matrix_get_row(xi_ahead,xi,n-1);
+    gsl_matrix_get_row(xi_behind,xi,n-2);
     
-    gsl_vector_add(&xi_dot_view.vector,xi_row_ahead);
-    gsl_vector_sub(&xi_dot_view.vector,xi_row_behind);
+    gsl_vector_add(&xi_dot_view.vector,xi_ahead);
+    gsl_vector_sub(&xi_dot_view.vector,xi_behind);
     gsl_vector_scale(&xi_dot_view.vector,1/ds);
     
     //intermediate points
     //centered diff
+    /*
     for (i=1;i<n-1;i++) {
         xi_dot_view = gsl_matrix_row(xi_dot,i);
-        gsl_matrix_get_row(xi_row_ahead,xi,i+1);
-        gsl_matrix_get_row(xi_row_behind,xi,i-1);
+        gsl_matrix_get_row(xi_ahead,xi,i+1);
+        gsl_matrix_get_row(xi_behind,xi,i-1);
 
-        gsl_vector_add(&xi_dot_view.vector,xi_row_ahead);
-        gsl_vector_sub(&xi_dot_view.vector,xi_row_behind);
+        gsl_vector_add(&xi_dot_view.vector,xi_ahead);
+        gsl_vector_sub(&xi_dot_view.vector,xi_behind);
         gsl_vector_scale(&xi_dot_view.vector,1/(2*ds));
     }
+    */
     
-    gsl_vector_free(xi_row_ahead);
-    gsl_vector_free(xi_row_behind);
+    //backward diff
+    for (i=1;i<n-1;i++) {
+        xi_dot_view = gsl_matrix_row(xi_dot,i);
+        gsl_matrix_get_row(xi_ahead,xi,i);
+        gsl_matrix_get_row(xi_behind,xi,i-1);
+
+        gsl_vector_add(&xi_dot_view.vector,xi_ahead);
+        gsl_vector_sub(&xi_dot_view.vector,xi_behind);
+        gsl_vector_scale(&xi_dot_view.vector,1/(ds));
+    }
+    
+    gsl_vector_free(xi_ahead);
+    gsl_vector_free(xi_behind);
 }
 
 //the dynamics always needs to compute g and xi from eta, xi(0), and xi_prev
-void integrate(struct SystemParameters sys_params, gsl_matrix *eta, gsl_matrix *xi_prev, gsl_matrix *g, gsl_matrix *xi) {
+void integrate(struct SystemParameters sys_params, const gsl_matrix *eta, const gsl_matrix *xi_prev, gsl_matrix *g, gsl_matrix *xi) {
     //the matrices of values will be stored as a series of rows
     //for now just do the g and xi integration, worry about delta later
 
@@ -437,10 +469,10 @@ void integrate(struct SystemParameters sys_params, gsl_matrix *eta, gsl_matrix *
     gsl_matrix *g_temp = gsl_matrix_calloc(4,4);
     gsl_vector *g_row = gsl_vector_calloc(12);
     
-    gsl_vector_view xi_prev_row;
-    gsl_vector_view eta_row;
-    gsl_vector_view xi_row;
-    gsl_vector_view xi_row_off;
+    gsl_vector *xi_prev_row = gsl_vector_calloc(6);
+    gsl_vector *eta_row = gsl_vector_calloc(6);
+    gsl_vector *xi_row = gsl_vector_calloc(6);
+    gsl_vector *xi_row_off = gsl_vector_calloc(6);
     
     gsl_matrix *xi_adj = gsl_matrix_calloc(6,6);
     gsl_vector *xi_acc = gsl_vector_calloc(6);
@@ -457,7 +489,7 @@ void integrate(struct SystemParameters sys_params, gsl_matrix *eta, gsl_matrix *
     }
     for (i=0;i<6;i++) {
         gsl_matrix_set(xi,0,i,gsl_vector_get(xi0,i));
-        gsl_matrix_set(eta,0,i,gsl_vector_get(eta0,i)); //do I need to do this?
+        //gsl_matrix_set(eta,0,i,gsl_vector_get(eta0,i)); //do I need to do this?
     }
         
     for (i=1;i<n;i++) {
@@ -468,18 +500,19 @@ void integrate(struct SystemParameters sys_params, gsl_matrix *eta, gsl_matrix *
         
         //now add the adjoint portion
         //pull out the relevant views
-        xi_prev_row = gsl_matrix_row(xi_prev,i);
-        eta_row = gsl_matrix_row(eta,i);
-        adjoint(&xi_prev_row.vector,xi_adj);
-        xi_row = gsl_matrix_row(xi,i);
-        xi_row_off = gsl_matrix_row(xi,i-1);
+        gsl_matrix_get_row(xi_prev_row,xi_prev,i);
+        gsl_matrix_get_row(eta_row, eta,i);
+        adjoint(xi_prev_row,xi_adj);
+        gsl_matrix_get_row(xi_row,xi,i);
+        gsl_matrix_get_row(xi_row_off,xi,i-1);
                 
         //do the adjoint portion of equation
-        gsl_blas_dgemv(CblasNoTrans,-dt,xi_adj,&eta_row.vector,1.0,&xi_row.vector);
+        gsl_blas_dgemv(CblasNoTrans,-dt,xi_adj,eta_row,1.0,xi_row);
+        gsl_matrix_set_row(xi,i,xi_row);
         
         //do the accumulated xi
-        gsl_vector_add(xi_acc,&xi_row.vector);
-        gsl_vector_add(xi_acc,&xi_row_off.vector);
+        gsl_vector_add(xi_acc,xi_row);
+        gsl_vector_add(xi_acc,xi_row_off);
         
         //compute g
         gsl_vector_memcpy(xi_acc_temp,xi_acc);
@@ -491,6 +524,16 @@ void integrate(struct SystemParameters sys_params, gsl_matrix *eta, gsl_matrix *
         gsl_matrix_set_row(g,i,g_row);
     }
     
+    printf("After integration:\n");
+    printMatrix(eta);
+    printMatrix(xi);
+    printMatrix(g);
+    
+    gsl_vector_free(xi_prev_row);
+    gsl_vector_free(eta_row);
+    gsl_vector_free(xi_row);
+    gsl_vector_free(xi_row_off);
+    
     gsl_matrix_free(g_temp);
     gsl_vector_free(g_row);
     gsl_matrix_free(xi_adj);
@@ -501,7 +544,7 @@ void integrate(struct SystemParameters sys_params, gsl_matrix *eta, gsl_matrix *
 
 //computing what the derivative of eta is based off the guessed values and the integral/derivative values
 void timeDerivative(struct SystemParameters sys_params, struct BodyParameters body_params, struct ActuatorParameters act_params,
-        gsl_matrix *g_mat, gsl_matrix *xi_mat, gsl_matrix *eta_mat, gsl_matrix *xi_dot,
+        const gsl_matrix *g_mat, const gsl_matrix *xi_mat, const gsl_matrix *eta_mat, const gsl_matrix *xi_dot,
         gsl_matrix *eta_der_mat) {
     
     
@@ -515,38 +558,38 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
     
     double pi_dot_norm;
 
-    gsl_matrix *R = gsl_matrix_alloc(3,3);
-    gsl_vector *xi = gsl_vector_alloc(6);
-    gsl_vector *eta = gsl_vector_alloc(6);
+    gsl_matrix *R = gsl_matrix_calloc(3,3);
+    gsl_vector *xi = gsl_vector_calloc(6);
+    gsl_vector *eta = gsl_vector_calloc(6);
     gsl_matrix *K = gsl_matrix_calloc(6,6);
     gsl_matrix *gamma = gsl_matrix_calloc(6,6);
     gsl_vector_view o_view;
-    gsl_matrix *o_skew = gsl_matrix_alloc(3,3);
+    gsl_matrix *o_skew = gsl_matrix_calloc(3,3);
     gsl_vector_view n_view;
-    gsl_matrix *n_skew = gsl_matrix_alloc(3,3);
+    gsl_matrix *n_skew = gsl_matrix_calloc(3,3);
     gsl_vector_view w_view;
-    gsl_matrix *w_skew = gsl_matrix_alloc(3,3);
+    gsl_matrix *w_skew = gsl_matrix_calloc(3,3);
     gsl_vector_view v_view;
-    gsl_matrix *v_skew = gsl_matrix_alloc(3,3);
-    gsl_vector *r_vec = gsl_vector_alloc(3);
-    gsl_matrix *r_skew = gsl_matrix_alloc(3,3);
-    gsl_vector *xi_der = gsl_vector_alloc(6);
+    gsl_matrix *v_skew = gsl_matrix_calloc(3,3);
+    gsl_vector *r_vec = gsl_vector_calloc(3);
+    gsl_matrix *r_skew = gsl_matrix_calloc(3,3);
+    gsl_vector *xi_der = gsl_vector_calloc(6);
     gsl_vector_view o_der_view;
     gsl_vector_view n_der_view;
-    gsl_matrix *ad_xi = gsl_matrix_alloc(6,6);
-    gsl_matrix *ad_eta = gsl_matrix_alloc(6,6);
+    gsl_matrix *ad_xi = gsl_matrix_calloc(6,6);
+    gsl_matrix *ad_eta = gsl_matrix_calloc(6,6);
     gsl_vector *temp_vec0 = gsl_vector_calloc(6);
     gsl_vector *temp_vec1 = gsl_vector_calloc(6);
     gsl_vector *temp_vec2 = gsl_vector_calloc(6);
     gsl_vector *temp_vec3 = gsl_vector_calloc(3);
     gsl_vector *temp_vec4 = gsl_vector_calloc(3);
     gsl_vector *temp_vec5 = gsl_vector_calloc(3);
-    gsl_vector *p_dot = gsl_vector_alloc(3);
-    gsl_matrix *p_dot_skew = gsl_matrix_alloc(3,3);
-    gsl_vector *p_ddot = gsl_vector_alloc(3);
+    gsl_vector *p_dot = gsl_vector_calloc(3);
+    gsl_matrix *p_dot_skew = gsl_matrix_calloc(3,3);
+    gsl_vector *p_ddot = gsl_vector_calloc(3);
     
-    gsl_vector *g_row = gsl_vector_alloc(12);
-    gsl_matrix *g = gsl_matrix_alloc(4,4);
+    gsl_vector *g_row = gsl_vector_calloc(12);
+    gsl_matrix *g = gsl_matrix_calloc(4,4);
     gsl_matrix_view R_view;
 
     //get the body parameters
@@ -660,8 +703,7 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
         vy=gsl_vector_get(&v_view.vector,1);
         vz=gsl_vector_get(&v_view.vector,2);
         
-
-        
+       
         for (j=0;j<N;j++) {
             rx = act_params.rx(Rad,j,N,ds*i);
             ry = act_params.ry(Rad,j,N,ds*i);
@@ -699,8 +741,7 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
 
             F = act_params.force(q,j,i,ds*i);
             
-            pi_dot_norm = pow(sqrt(pow(nz + ox*ry - oy*rx,2.0) + pow(ny + oz*rx,2.0) + pow(nx - oz*ry,2.0)),3.0);
-            printf("pi_dot_norm: %f\n",pi_dot_norm);
+            pi_dot_norm = pow(pow(nz + ox*ry - oy*rx,2.0) + pow(ny + oz*rx,2.0) + pow(nx - oz*ry,2.0),1.5);        
 
             F_vec[0] += (-F/pi_dot_norm)*gsl_vector_get(p_ddot,0);
             F_vec[1] += (-F/pi_dot_norm)*gsl_vector_get(p_ddot,1);
@@ -762,8 +803,8 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
 //boundary conditions are eta = eta_prev + dt*eta_der and the tip wrench balance W_ext = W_int
 //do not need eta(0) as that is a given initial condition
 void boundaryConditions(struct SystemParameters sys_params, struct BodyParameters body_params, struct ActuatorParameters act_params,
-        gsl_matrix *eta, gsl_matrix *eta_prev, gsl_matrix *eta_der,
-        gsl_matrix *xi,
+        const gsl_matrix *eta, const gsl_matrix *eta_prev, const gsl_matrix *eta_der,
+        const gsl_matrix *xi,
         gsl_vector *conditions) {
     
     double dt = sys_params.dt;
@@ -771,10 +812,12 @@ void boundaryConditions(struct SystemParameters sys_params, struct BodyParameter
     int N = sys_params.N;
     gsl_vector *q = sys_params.q;
     
+    gsl_vector_set_zero(conditions);
+    
     //the backward euler condition
-    gsl_matrix_view eta_view = gsl_matrix_submatrix(eta,1,0,n-1,6);
-    gsl_matrix_view eta_prev_view = gsl_matrix_submatrix(eta_prev,1,0,n-1,6);
-    gsl_matrix_view eta_der_view = gsl_matrix_submatrix(eta_der,1,0,n-1,6);
+    gsl_matrix_const_view eta_view = gsl_matrix_const_submatrix(eta,1,0,n-1,6);
+    gsl_matrix_const_view eta_prev_view = gsl_matrix_const_submatrix(eta_prev,1,0,n-1,6);
+    gsl_matrix_const_view eta_der_view = gsl_matrix_const_submatrix(eta_der,1,0,n-1,6);
     gsl_matrix *eulerCond = gsl_matrix_alloc(n-1,6);
     
     gsl_matrix_memcpy(eulerCond,&eta_der_view.matrix);
@@ -863,7 +906,7 @@ double ry_fun(double R, int i, int N, double s) {
 
 //given eta, xi_prev, eta_prev do the entire computation
 void dynamicsComputation(struct SystemParameters sys_params, struct BodyParameters body_params, struct ActuatorParameters act_params,
-        gsl_matrix *eta, gsl_matrix *eta_prev, gsl_matrix *xi_prev, //provided values
+        const gsl_matrix *eta, const gsl_matrix *eta_prev, const gsl_matrix *xi_prev, //provided values
         gsl_matrix *g, gsl_matrix *xi, gsl_vector *conditions) { //the matrices to be filled
     
     
@@ -885,9 +928,7 @@ void dynamicsComputation(struct SystemParameters sys_params, struct BodyParamete
     
     //compute boundary conditions
     boundaryConditions(sys_params, body_params, act_params, eta, eta_prev, eta_der, xi, conditions);
-    
-    printMatrix(xi_dot);
-    
+       
     gsl_matrix_free(xi_dot);
     gsl_matrix_free(eta_der);
 }
@@ -943,6 +984,10 @@ int dynamicsFunction(const gsl_vector *x, void *params, gsl_vector *conditions) 
     
     //rearrange the input, x -> (xi0, eta);
     int i, j;
+    for (i=0;i<6*n;i++) {
+        printf("%g, ",gsl_vector_get(x,i));
+    }
+    printf("\n");
     for (i=1;i<n;i++) {
         for (j=0;j<6;j++) {
             gsl_matrix_set(eta,i,j,gsl_vector_get(x,i*6+j));
@@ -956,13 +1001,14 @@ int dynamicsFunction(const gsl_vector *x, void *params, gsl_vector *conditions) 
     //run the computation
     dynamicsComputation(sys_params, body_params, act_params, eta, eta_prev, xi_prev, g, xi, conditions);
     
+    /*
     printf("Matrices: \n");
     printMatrix(g);
     printMatrix(xi);
     printMatrix(eta);
     printMatrix(eta_prev);
     printMatrix(xi_prev);
-    
+    */
     return GSL_SUCCESS;
 }
 
@@ -1053,8 +1099,8 @@ int main(void) {
 int main(void) {
     
     //setup for system
-    int n = 5;
-    int N = 3;
+    const size_t n = 10;
+    const size_t N = 3;
     double L = 0.04;
     double p = 1000;
     double E = 37.8e3;
@@ -1079,7 +1125,7 @@ int main(void) {
     gsl_vector_set_zero(eta0);
     
     gsl_vector *q = gsl_vector_calloc(N);
-    gsl_vector_set(q,0,0);
+    gsl_vector_set(q,0,0.01);
     gsl_vector_set(q,1,0);
     gsl_vector_set(q,2,0);
     
@@ -1166,6 +1212,7 @@ int main(void) {
     gsl_multiroot_fsolver_free(s);
     
     gsl_vector_free(x);
+    
     gsl_matrix_free(g0);
     gsl_vector_free(xi0);
     gsl_vector_free(xi_ref);
