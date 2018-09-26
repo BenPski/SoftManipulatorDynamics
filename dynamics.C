@@ -4,6 +4,8 @@
 #include <gsl/gsl_multiroots.h>
 #include <stdbool.h>
 
+
+
 /*
  *Want to define the general procedure for computing the dynamics, since there is very little difference between
  *the different kinds of dynamics
@@ -87,13 +89,15 @@ struct SystemParameters {
 
     //flags
     bool delta; //compute delta in the integration
+    
+    gsl_matrix *extra; //i don't know if this is the best choice, but it is what I'm using for now 
 };
 
 
 struct ActuatorParameters {
     double (*rx)(double R, int i, int N, double s); //the function to determine the displacement of the actuator, ACT# -> s -> r
     double (*ry)(double R, int i, int N, double s);
-    double (*force)(gsl_vector *q, int i, int j, double s); //the function to determine the force, input -> ACT# -> POS# -> s -> r
+    double (*force)(struct SystemParameters sys_params, int i, int j, double s); //the function to determine the force, input -> ACT# -> POS# -> s -> r
 };
 
 
@@ -371,7 +375,6 @@ void expSE(const gsl_vector *alg, gsl_matrix *group) {
  *Numerical utility functions
  */
 
-// could make it more generically take matrices/vectors
 //can also make this a banded matrix multiplication
 void approxDerivatives(const struct SystemParameters sys_params, const gsl_matrix *xi, gsl_matrix *xi_dot) {
     double ds = sys_params.ds;
@@ -437,7 +440,7 @@ void approxDerivatives(const struct SystemParameters sys_params, const gsl_matri
 }
 
 //the dynamics always needs to compute g and xi from eta, xi(0), and xi_prev
-void integrate(struct SystemParameters sys_params, const gsl_matrix *eta, const gsl_matrix *xi_prev, gsl_matrix *g, gsl_matrix *xi) {
+void integrate(struct SystemParameters sys_params, struct BodyParameters body_params, struct ActuatorParameters act_params, const gsl_matrix *eta, const gsl_matrix *xi_prev, gsl_matrix *g, gsl_matrix *xi) {
     //the matrices of values will be stored as a series of rows
     //for now just do the g and xi integration, worry about delta later
 
@@ -449,6 +452,8 @@ void integrate(struct SystemParameters sys_params, const gsl_matrix *eta, const 
     double ds = sys_params.ds;
     double dt = sys_params.dt;
     int n = sys_params.n;
+    int N = sys_params.N;
+    
     gsl_matrix *g0 = sys_params.g0;
     gsl_vector *eta0 = sys_params.eta0;
     gsl_vector *xi0 = sys_params.xi0;
@@ -492,6 +497,7 @@ void integrate(struct SystemParameters sys_params, const gsl_matrix *eta, const 
         adjoint(xi_prev_row,xi_adj);
         gsl_matrix_get_row(xi_row,xi,i);
         gsl_matrix_get_row(xi_row_off,xi,i-1);
+        
 
         //do the adjoint portion of equation
         gsl_blas_dgemv(CblasNoTrans,dt,xi_adj,eta_row,1.0,xi_row);
@@ -510,13 +516,38 @@ void integrate(struct SystemParameters sys_params, const gsl_matrix *eta, const 
         flattenConfig(g_temp,g_row);
         gsl_matrix_set_row(g,i,g_row);
     }
+    
+    if (sys_params.delta) {
+        gsl_vector *r = gsl_vector_calloc(4);
+        gsl_vector_set(r,3,1);
+        gsl_matrix *xi_se = gsl_matrix_calloc(4,4);
+        gsl_vector *temp_vec = gsl_vector_calloc(4);
+        double delta;
+        for (i=0;i<n;i++) {
+            for (j=0;j<N;j++) {
+                gsl_vector_set(r,0,act_params.rx(body_params.R,j,N,ds*i));
+                gsl_vector_set(r,1,act_params.ry(body_params.R,j,N,ds*i));
+                //delta = ds*(norm(se(xi)*r) - norm(se(xi_ref)*r))
+                gsl_matrix_get_row(xi_row,xi,i);
+                se(xi_row,xi_se);
+                gsl_blas_dgemv(CblasNoTrans,1.0,xi_se,r,0.0,temp_vec);
+                
+                delta = gsl_blas_dnrm2(temp_vec);
+                se(body_params.xi_ref,xi_se);
+                gsl_blas_dgemv(CblasNoTrans,1.0,xi_se,r,0.0,temp_vec);
+                
+                delta -= gsl_blas_dnrm2(temp_vec);
+                
+                gsl_matrix_set(sys_params.extra,i,j,ds*delta);
+            }
+        }
+        gsl_vector_free(r);
+        gsl_vector_free(temp_vec);
+        gsl_matrix_free(xi_se);
+    }
+        
+    
 
-    /*
-    printf("After integration:\n");
-    printMatrix(eta);
-    printMatrix(xi);
-    printMatrix(g);
-    */
     gsl_vector_free(xi_prev_row);
     gsl_vector_free(eta_row);
     gsl_vector_free(xi_row);
@@ -727,7 +758,7 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
             /* skew(r) * res */
             gsl_blas_dgemv(CblasNoTrans,1.0,r_skew,temp_vec3,0.0,p_ddot);
 
-            F = act_params.force(q,j,i,ds*i);
+            F = act_params.force(sys_params,j,i,ds*i);
 
             pi_dot_norm = pow(pow(nz + ox*ry - oy*rx,2.0) + pow(ny + oz*rx,2.0) + pow(nx - oz*ry,2.0),1.5);
 
@@ -856,7 +887,7 @@ void boundaryConditions(struct SystemParameters sys_params, struct BodyParameter
     for (i=0;i<N;i++) {
         rx = act_params.rx(Rad,i,N,L);
         ry = act_params.ry(Rad,i,N,L);
-        f = -act_params.force(q,i,n-1,L);
+        f = -act_params.force(sys_params,i,n-1,L);
 
         s_norm = sqrt((pow(nz + ox*ry - oy*rx,2.0) + pow(ny + oz*rx,2.0) + pow(nx - oz*ry,2.0)));
 
@@ -883,9 +914,64 @@ void boundaryConditions(struct SystemParameters sys_params, struct BodyParameter
 
 }
 
+double tcaForceBase(int k, double delta, double temp) {
+    //have to modify the coefficients of the polynomials for the forces with c_i/k^(i-1)
 
-double cableForce(gsl_vector *q, int i, int j, double s) {
-    return gsl_vector_get(q,i);
+    /* the force equation for the TCAs */
+
+    double l = 0.13;
+    double L = 0.04;
+    double phi0 = 2*M_PI*100;
+    double D = 1.7e-3;
+    int N = 3;
+
+    double rho = 4.1582e-05+9.8218e-07*(temp+25);
+    double alpha0 = asin(L/l);
+    double n = 2*cos(alpha0)*l/(D*M_PI);
+    double theta = M_PI*(1/2-1/N);
+    double d0 = 2*D*L/l;
+    double d_thread0 = d0/(1+1/cos(theta));
+    double d_thread = d_thread0*(1+rho*temp);
+    double d = d0*(1+rho*temp);
+    double E = (560.2023-(temp+25)*1.7771)*pow(10.0,6);
+    double nu = 0.45;
+    double G = E/(2*(1+nu));
+    double J = N*M_PI*pow(d_thread,4)/16*(1/2+pow(1/cos(theta),2));
+    double I = J/2;
+    double A_a = N*M_PI*pow(d_thread,2)/4;
+    double Tau = (J*G*phi0/l)*(1-d_thread/d_thread0);
+    
+    //rewrite for f11 and f12
+    double a0 = (2*pow(sin(alpha0),2)/E-2*pow(sin(alpha0),4)/E-2*pow(sin(alpha0),2)/G+pow(sin(alpha0),4)/G+1/G)*k;
+    double a1 = 4*sin(alpha0)/(E*l)-4*sin(alpha0)/(G*l)-8*pow(sin(alpha0),3)/(E*l)+4*pow(sin(alpha0),3)/(G*l);
+    double a2 = (2/(E*pow(l,2))-2/(G*pow(l,2))-12*pow(sin(alpha0),2)/(E*pow(l,2))+6*pow(sin(alpha0),2)/(G*pow(l,2)))/k;
+    double a3 = (4*sin(alpha0)/(G*pow(l,3))-8*sin(alpha0)/(E*pow(l,3)))/pow(k,2);
+    double a4 = (1/(G*pow(l,4))-2/(E*pow(l,4)))/pow(k,3);
+    
+    double b0 = (pow(sin(alpha0),2)/E-pow(sin(alpha0),2)/G+1/G)*k;
+    double b1 = 2*sin(alpha0)/(E*l)-2*sin(alpha0)/(G*l);
+    double b2 = (1/(E*pow(l,2))-1/(G*pow(l,2)))/k;
+    
+    double c0 = (1-pow(sin(alpha0),2))*k;
+    double c1 = -2*sin(alpha0)/l;
+    double c2 = (-1/pow(l,2))/k;
+    
+    double f1 = (8*pow(l,3)/(pow(n,2)*pow(M_PI,3)*pow(d_thread,4)))*(a0+a1*delta+a2*pow(delta,2)+a3*pow(delta,3)+a4*pow(delta,4))+(8*l/(2*M_PI*pow(d_thread,2)))*(b0+b1*delta+b2*pow(delta,2));
+    double f2 = (8*pow(l,2)/(n*pow(M_PI,2)*G*pow(d_thread,4)))*(c0+c1*delta+c2*pow(delta,2));
+    
+    double F = (delta+f2*Tau)/f1;
+    return F;
+    
+
+}
+
+double tcaForce(struct SystemParameters sys_params, int i, int j, double s) {
+    
+    return tcaForceBase(sys_params.n, gsl_matrix_get(sys_params.extra,j,i), gsl_vector_get(sys_params.q,i));
+}
+
+double cableForce(struct SystemParameters sys_params, int i, int j, double s) {
+    return gsl_vector_get(sys_params.q,i);
 }
 
 double rx_fun(double R, int i, int N, double s) {
@@ -908,7 +994,7 @@ void dynamicsComputation(struct SystemParameters sys_params, struct BodyParamete
     int n = sys_params.n;
 
     //do the integration
-    integrate(sys_params, eta, xi_prev, g, xi);
+    integrate(sys_params, body_params, act_params, eta, xi_prev, g, xi);
 
     //do the differentiation
     gsl_matrix *xi_dot = gsl_matrix_alloc(n,6);
@@ -1038,19 +1124,16 @@ void stepDynamics(struct SimulationParameters sim_params) {
     {
         iter++;
         status = gsl_multiroot_fsolver_iterate(s);
-        printf("status: %s\n", gsl_strerror (status));
-
-        printf("Iteration: %d\n",iter);
-
         if (status)
             break;
+        //printf("Iteration: %d\n",iter);
 
         status = gsl_multiroot_test_residual(s->f, 1e-7);
-        printf("status: %s\n", gsl_strerror (status));
+        //printf("status: %s\n", gsl_strerror (status));
     }
     while (status == GSL_CONTINUE && iter<1000);
 
-
+/*
     printf("The solution:\n");
     printVector(s->x);
     printf("The conditions:\n");
@@ -1065,7 +1148,7 @@ void stepDynamics(struct SimulationParameters sim_params) {
     printMatrix(sim_params.eta);
     printMatrix(sim_params.eta_prev);
     printMatrix(sim_params.xi_prev);
-
+*/
 
     //free up everything
     gsl_multiroot_fsolver_free(s);
@@ -1075,10 +1158,12 @@ void stepDynamics(struct SimulationParameters sim_params) {
 
 
 
-int main(void) {
+int main(int argc, char *argv[]) {
+    
+    int n = atoi(argv[1]);
 
     //setup for system
-    const int n = 10;
+    //const int n = 5;
     const int N = 3;
     double L = 0.04;
     double p = 1000;
@@ -1104,17 +1189,20 @@ int main(void) {
     gsl_vector_set_zero(eta0);
 
     gsl_vector *q = gsl_vector_calloc(N);
-    gsl_vector_set(q,0,0.01);
+    gsl_vector_set(q,0,50);
     gsl_vector_set(q,1,0);
     gsl_vector_set(q,2,0);
 
 
-    struct SystemParameters sys_params = { dt, ds, n, N, g0, eta0, xi0, q, false};
+    gsl_matrix *extra = gsl_matrix_calloc(n,N);
+    
+    struct SystemParameters sys_params = { dt, ds, n, N, g0, eta0, xi0, q, false, extra};
     struct BodyParameters body_params = { E, G, p, J, I, A, R, L, xi_ref};
     struct ActuatorParameters act_params;
     act_params.rx = rx_fun;
     act_params.ry = ry_fun;
     act_params.force = cableForce;
+    //act_params.force = tcaForce;
 
     gsl_matrix *eta = gsl_matrix_alloc(n,6);
     gsl_matrix *eta_prev = gsl_matrix_alloc(n,6);
@@ -1140,6 +1228,8 @@ int main(void) {
         gsl_matrix_memcpy(params.eta_prev,params.eta);
     }
 
+    gsl_matrix_free(extra);
+    
     gsl_matrix_free(g0);
     gsl_vector_free(xi0);
     gsl_vector_free(xi_ref);
