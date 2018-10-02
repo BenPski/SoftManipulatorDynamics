@@ -57,11 +57,8 @@ and if there is no error, it should be working fine.
 
 Finally to compile the C files to get the mex files, Matlab does not know where the libraries and headers are for gsl and does not automatically recognize ".a" files, so we have to help it out. To properly compile the files run:
 ```matlab
-%cable driven
-mex dynamicsStable.c -I'C:\MinGW\msys\1.0\local\include\' 'C:\MinGW\msys\1.0\local\lib\libgsl.a' 'C:\MinGW\msys\1.0\local\lib\libgslcblas.a'
-
-%tca driven
-mex dynamicsStableTCA.c -I'C:\MinGW\msys\1.0\local\include\' 'C:\MinGW\msys\1.0\local\lib\libgsl.a' 'C:\MinGW\msys\1.0\local\lib\libgslcblas.a'
+%compile dynamics
+mex -I'C:\MinGW\msys\1.0\local\include\' matlab_interface.c dynamics.c 'C:\MinGW\msys\1.0\local\lib\libgsl.a' 'C:\MinGW\msys\1.0\local\lib\libgslcblas.a'
 ```
 
 After that it should have compiled and you'll see "dynamicsStable.mexw64" and "dynamicsStableTCA.mexw64", which will allow you to run the Matlab code.
