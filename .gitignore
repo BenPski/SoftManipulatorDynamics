@@ -5,3 +5,6 @@
 *.png
 *.fig
 *.o
+.spyproject/
+*.sublime-project
+*.sublime-workspace
