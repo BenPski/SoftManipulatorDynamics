@@ -1,5 +1,7 @@
 /*
 Run the dynamics, mostly a test
+
+For some reason only compiles with g++, gcc gives a linker error of not being able to find force and r functions
 */
 
 #include <gsl/gsl_matrix.h>
