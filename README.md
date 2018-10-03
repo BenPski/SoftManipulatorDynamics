@@ -6,13 +6,11 @@ The library depends on gsl and that must be installed independently.
 On linux getting the mex compilation working is straightforward.
 Most distributions should have a C/C++ compiler available, only thing would be an issue is making sure it is compatible with your version of Matlab.
 gsl should be available in the package manager or a simple installation from source.
-Then the compilation is simply:
+However, when I compile it with gcc I get linker errors, but it works fine with g++. This may be due to how the header file defines the structs?
+Then the compilation is:
 ```matlab
-%cable driven
-mex dynamicsStable.c -lgsl -lgslcblas -lm
-
-%tca driven
-mex dynamicsStableTCA.c -lgsl -lgslcblas -lm
+% the dynamics are unified into one function for now
+mex GCC=/usr/bin/g++ -output manip_dynamics matlab_interface.c dynamics.C -lgsl -lgslcblas -lm
 ```
 
 For Windows this is quite a bit more involved and easier to mess up. I only know the way I did it works and it took quite a while of mucking around to get it to work.
@@ -58,10 +56,21 @@ and if there is no error, it should be working fine.
 Finally to compile the C files to get the mex files, Matlab does not know where the libraries and headers are for gsl and does not automatically recognize ".a" files, so we have to help it out. To properly compile the files run:
 ```matlab
 %compile dynamics
-mex -I'C:\MinGW\msys\1.0\local\include\' matlab_interface.c dynamics.c 'C:\MinGW\msys\1.0\local\lib\libgsl.a' 'C:\MinGW\msys\1.0\local\lib\libgslcblas.a'
+mex -output manip_dynamics -I'C:\MinGW\msys\1.0\local\include\' matlab_interface.c dynamics.c 'C:\MinGW\msys\1.0\local\lib\libgsl.a' 'C:\MinGW\msys\1.0\local\lib\libgslcblas.a'
+
+%or can execute something similar to the make_manip_dynamics.m script
+make_manip_dynamics
 ```
 
-After that it should have compiled and you'll see "dynamicsStable.mexw64" and "dynamicsStableTCA.mexw64", which will allow you to run the Matlab code.
+After that it should have compiled and you'll see "manip_dynamics.mexw64", which will allow you to run the Matlab code. Then to run the dynamics, both simulations are the same just with different flags.
+
+```matlab
+%cable = 0
+[g,xi,eta] = manip_dynamics(0,q,eta,xi,dt);
+
+%tca = 1
+[g,xi,eta] = manip_dynamics(0,q,eta,xi,dt);
+```
 
 
 # Example Usage
@@ -72,29 +81,18 @@ There are some definite and simple to fix issues currently, but they can be avoi
 ```matlab
 %cable case
 %g is configuration, xi is strain, and eta is velocity
-[xi,eta,g] = initialDynamics(10); %10 discretization points
-%have to transpose all the initial values
-g = g';
-xi = xi';
-eta = eta';
+[g,xi,eta] = initDynamics(10); %10 discretization points
 %run one step of dynamics
-[g,xi,eta] = fastDynamicsStable([0;0;0],eta,xi,0.01); %[0,0,0] are the cable tensions
+[g,xi,eta] = dynamicsCable([0;0;0],eta,xi,0.01); %[0,0,0] are the cable tensions
 
 %tca case, with the temperature neural net
 q = [1;0;0]; %the actuation voltage
-[g,xi,eta,tcaTemps] = initTCADynamics(10);
-[g,xi,eta,tcaTemps] = fullTCADynamics(q,eta,xi,0.01,tcaTemps);
-
-%tca case, with direct temperatures (nearly the same as the cables)
-q = [100;0;0]; %tca temperatures
-[xi,eta,g] = initialDynamics(10);
-g = g';
-xi = xi';
-eta = eta';
-[g,xi,eta] = fastDynamicsStableTCA(q,eta,xi,0.01);
-
+[g,xi,eta,tcaTemps] = initDynamics(10);
+[g,xi,eta,tcaTemps] = dynamicsTCA(q,eta,xi,0.01,tcaTemps);
 ```
 
 
 # Notes:
-Currently Matlab is only used for fsolve as the numerical scheme is implicit and a bunch of equations need to be solved at every step, if the equation solver is implemented in C (considering it already depends on gsl this is probably easyish) then this could be completely independent of matlab.
+All the numerical simulations are done in C. So, can use the dynamics from C or matlab, matlab just has an interface for calling the dynamics stepping function. Working on a python interface and better interfaces overall. 
+
+The matlab calling does not check for errors, so it is pretty easy to make it crash.
