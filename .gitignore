@@ -1,5 +1,10 @@
 *.mex*
 *.asv
 *.exe
-*.fig
+*.out
 *.png
+*.fig
+*.o
+.spyproject/
+*.sublime-project
+*.sublime-workspace
