@@ -79,6 +79,7 @@ int main(int argc, char *argv[]) {
         gsl_matrix_memcpy(params.eta_prev,params.eta);
     }
 
+
     gsl_matrix_free(extra);
     
     gsl_matrix_free(g0);
