@@ -944,19 +944,19 @@ double tcaForceBase(int k, double delta, double temp) {
     double Tau = (J*G*phi0/l)*(1-d_thread/d_thread0);
     
     //rewrite for f11 and f12
-    double a0 = (2*pow(sin(alpha0),2)/E-2*pow(sin(alpha0),4)/E-2*pow(sin(alpha0),2)/G+pow(sin(alpha0),4)/G+1/G)*k;
+    double a0 = (2*pow(sin(alpha0),2)/E-2*pow(sin(alpha0),4)/E-2*pow(sin(alpha0),2)/G+pow(sin(alpha0),4)/G+1/G)/k;
     double a1 = 4*sin(alpha0)/(E*l)-4*sin(alpha0)/(G*l)-8*pow(sin(alpha0),3)/(E*l)+4*pow(sin(alpha0),3)/(G*l);
-    double a2 = (2/(E*pow(l,2))-2/(G*pow(l,2))-12*pow(sin(alpha0),2)/(E*pow(l,2))+6*pow(sin(alpha0),2)/(G*pow(l,2)))/k;
-    double a3 = (4*sin(alpha0)/(G*pow(l,3))-8*sin(alpha0)/(E*pow(l,3)))/pow(k,2);
-    double a4 = (1/(G*pow(l,4))-2/(E*pow(l,4)))/pow(k,3);
+    double a2 = (2/(E*pow(l,2))-2/(G*pow(l,2))-12*pow(sin(alpha0),2)/(E*pow(l,2))+6*pow(sin(alpha0),2)/(G*pow(l,2)))*k;
+    double a3 = (4*sin(alpha0)/(G*pow(l,3))-8*sin(alpha0)/(E*pow(l,3)))*pow(k,2);
+    double a4 = (1/(G*pow(l,4))-2/(E*pow(l,4)))*pow(k,3);
     
-    double b0 = (pow(sin(alpha0),2)/E-pow(sin(alpha0),2)/G+1/G)*k;
+    double b0 = (pow(sin(alpha0),2)/E-pow(sin(alpha0),2)/G+1/G)/k;
     double b1 = 2*sin(alpha0)/(E*l)-2*sin(alpha0)/(G*l);
-    double b2 = (1/(E*pow(l,2))-1/(G*pow(l,2)))/k;
+    double b2 = (1/(E*pow(l,2))-1/(G*pow(l,2)))*k;
     
-    double c0 = (1-pow(sin(alpha0),2))*k;
+    double c0 = (1-pow(sin(alpha0),2))/k;
     double c1 = -2*sin(alpha0)/l;
-    double c2 = (-1/pow(l,2))/k;
+    double c2 = (-1/pow(l,2))*k;
     
     double f1 = (8*pow(l,3)/(pow(n,2)*pow(M_PI,3)*pow(d_thread,4)))*(a0+a1*delta+a2*pow(delta,2)+a3*pow(delta,3)+a4*pow(delta,4))+(8*l/(2*M_PI*pow(d_thread,2)))*(b0+b1*delta+b2*pow(delta,2));
     double f2 = (8*pow(l,2)/(n*pow(M_PI,2)*G*pow(d_thread,4)))*(c0+c1*delta+c2*pow(delta,2));
