@@ -322,7 +322,7 @@ void adjoint(const gsl_vector *alg, gsl_matrix *adj) {
 //annoying to check for what the representation of the algebra, so just allow a vector
 void expSE(const gsl_vector *alg, gsl_matrix *group) {
 
-    double a,b,c,d;
+    double a,b,c;
     double wx,wy,wz,vx,vy,vz;
     double w_norm;
     /*
@@ -381,7 +381,7 @@ void expSE(const gsl_vector *alg, gsl_matrix *group) {
 void approxDerivatives(const struct SystemParameters sys_params, const gsl_matrix *xi, gsl_matrix *xi_dot) {
     double ds = sys_params.ds;
     int n = sys_params.n;
-    int i, j;
+    int i;
 
     gsl_matrix_set_zero(xi_dot);
 
@@ -457,7 +457,7 @@ void integrate(struct SystemParameters sys_params, struct BodyParameters body_pa
     int N = sys_params.N;
     
     gsl_matrix *g0 = sys_params.g0;
-    gsl_vector *eta0 = sys_params.eta0;
+    //gsl_vector *eta0 = sys_params.eta0;
     gsl_vector *xi0 = sys_params.xi0;
 
     gsl_matrix *g_temp = gsl_matrix_calloc(4,4);
@@ -569,10 +569,10 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
         gsl_matrix *eta_der_mat) {
 
 
-    int i, j, k, stateSize, m, N;
-    double rx, ry, E, G, I, J, A, p, grav, ds, dt, Rad;
-    double ox,oy,oz,nx,ny,nz, wx,wy,wz,vx,vy,vz, F;
-    double ox_dot,oy_dot,oz_dot,nx_dot,ny_dot,nz_dot, wx_dot,wy_dot,wz_dot,vx_dot,vy_dot,vz_dot;
+    int i, j, m, N;
+    double rx, ry, E, G, I, J, A, p, grav, ds, Rad;
+    double ox,oy,oz,nx,ny,nz, F;
+    //double ox_dot,oy_dot,oz_dot,nx_dot,ny_dot,nz_dot, wx_dot,wy_dot,wz_dot,vx_dot,vy_dot,vz_dot;
 
     double temp_vec[6];
     double F_vec[6];
@@ -624,12 +624,12 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
     gsl_vector *xi_ref = body_params.xi_ref;
 
     //the system parameters
-    dt = sys_params.dt;
+    //dt = sys_params.dt;
     ds = sys_params.ds;
     m = sys_params.n;
     N = sys_params.N;
 
-    gsl_vector *q = sys_params.q;
+    //gsl_vector *q = sys_params.q;
 
     grav = -9.8;
     //grav = 0;
@@ -717,12 +717,12 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
         ny=gsl_vector_get(&n_view.vector,1);
         nz=gsl_vector_get(&n_view.vector,2);
 
-        wx=gsl_vector_get(&w_view.vector,0);
-        wy=gsl_vector_get(&w_view.vector,1);
-        wz=gsl_vector_get(&w_view.vector,2);
-        vx=gsl_vector_get(&v_view.vector,0);
-        vy=gsl_vector_get(&v_view.vector,1);
-        vz=gsl_vector_get(&v_view.vector,2);
+        //wx=gsl_vector_get(&w_view.vector,0);
+        //wy=gsl_vector_get(&w_view.vector,1);
+        //wz=gsl_vector_get(&w_view.vector,2);
+        //vx=gsl_vector_get(&v_view.vector,0);
+        //vy=gsl_vector_get(&v_view.vector,1);
+        //vz=gsl_vector_get(&v_view.vector,2);
 
 
         for (j=0;j<N;j++) {
@@ -831,7 +831,7 @@ void boundaryConditions(struct SystemParameters sys_params, struct BodyParameter
     double dt = sys_params.dt;
     int n = sys_params.n;
     int N = sys_params.N;
-    gsl_vector *q = sys_params.q;
+    //gsl_vector *q = sys_params.q;
 
     gsl_vector_set_zero(conditions);
 
@@ -856,7 +856,7 @@ void boundaryConditions(struct SystemParameters sys_params, struct BodyParameter
     //the tip wrench condition
     double E = body_params.E;
     double G = body_params.G;
-    double p = body_params.p;
+    //double p = body_params.p;
     double A = body_params.A;
     double I = body_params.I;
     double J = body_params.J;
@@ -934,13 +934,13 @@ double tcaForceBase(int k, double delta, double temp) {
     double d0 = 2*D*L/l;
     double d_thread0 = d0/(1+1/cos(theta));
     double d_thread = d_thread0*(1+rho*temp);
-    double d = d0*(1+rho*temp);
+    //double d = d0*(1+rho*temp);
     double E = (560.2023-(temp+25)*1.7771)*pow(10.0,6);
     double nu = 0.45;
     double G = E/(2*(1+nu));
     double J = N*M_PI*pow(d_thread,4)/16*(1/2+pow(1/cos(theta),2));
-    double I = J/2;
-    double A_a = N*M_PI*pow(d_thread,2)/4;
+    //double I = J/2;
+    //double A_a = N*M_PI*pow(d_thread,2)/4;
     double Tau = (J*G*phi0/l)*(1-d_thread/d_thread0);
     
     //rewrite for f11 and f12
@@ -1092,7 +1092,7 @@ void stepDynamics(struct SimulationParameters sim_params) {
 
     struct BodyParameters body_params = sim_params.body_params;
     struct SystemParameters sys_params = sim_params.sys_params;
-    struct ActuatorParameters act_params = sim_params.act_params;
+    //struct ActuatorParameters act_params = sim_params.act_params;
 
     int n = sys_params.n;
 

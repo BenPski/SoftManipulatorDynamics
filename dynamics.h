@@ -60,11 +60,11 @@ struct SimulationParameters {
 };
 
 
-extern void stepDynamics(struct SimulationParameters sim_params);
+void stepDynamics(struct SimulationParameters sim_params);
 
-extern double tcaForce(struct SystemParameters sys_params, int i, int j, double s);
-extern double cableForce(struct SystemParameters sys_params, int i, int j, double s);
-extern double rx_fun(double R, int i, int N, double s);
-extern double ry_fun(double R, int i, int N, double s);
+double tcaForce(struct SystemParameters sys_params, int i, int j, double s);
+double cableForce(struct SystemParameters sys_params, int i, int j, double s);
+double rx_fun(double R, int i, int N, double s);
+double ry_fun(double R, int i, int N, double s);
 
 #endif
