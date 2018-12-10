@@ -33,11 +33,12 @@ struct SystemParameters {
 
     //actuation
     gsl_vector *q;
+    gsl_vector *q_dot;
 
     //flags
     bool delta; //compute delta in the integration
-    
-    gsl_matrix *extra; //i don't know if this is the best choice, but it is what I'm using for now 
+
+    gsl_matrix *extra; //i don't know if this is the best choice, but it is what I'm using for now
 };
 
 

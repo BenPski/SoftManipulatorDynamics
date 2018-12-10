@@ -41,14 +41,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     for (i=0;i<N;i++) {
     	gsl_vector_set(q,i,q_in[i]);
     }
+    double *q_dot_in = mxGetPr(prhs[2]);
+    gsl_vector *q_dot = gsl_vector_calloc(N);
+    for (i=0;i<N;i++) {
+        gsl_vector_set(q_dot,i,q_dot_in[i]);
+    }
 
     //set eta_prev
 	int n;
 	const mwSize *dimEta;
-    dimEta = mxGetDimensions(prhs[2]);
+    dimEta = mxGetDimensions(prhs[3]);
     n = (int)dimEta[0];
     double *eta_prev_trans;
-    eta_prev_trans = mxGetPr(prhs[2]);
+    eta_prev_trans = mxGetPr(prhs[3]);
 	gsl_matrix *eta_prev = gsl_matrix_alloc(n,6);
     for (i=0;i<n;i++) {
         for (j=0;j<6;j++) {
@@ -59,7 +64,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     //set xi_prev
     gsl_matrix *xi_prev = gsl_matrix_alloc(n,6);
     double *xi_prev_trans;
-    xi_prev_trans = mxGetPr(prhs[3]);
+    xi_prev_trans = mxGetPr(prhs[4]);
 
     for (i=0;i<n;i++) {
         for (j=0;j<6;j++) {
@@ -68,7 +73,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
 
     //dt
-    double dt = mxGetPr(prhs[4])[0];
+    double dt = mxGetPr(prhs[5])[0];
 
     //everything else are just defaults for now
 
@@ -97,8 +102,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     gsl_vector *eta0 = gsl_vector_alloc(6);
     gsl_vector_set_zero(eta0);
 
-    gsl_matrix *extra = gsl_matrix_calloc(n,N);
-    struct SystemParameters sys_params = { dt, ds, n, N, g0, eta0, xi0, q, false, extra};
+    gsl_matrix *extra = gsl_matrix_calloc(n,2*N);
+    struct SystemParameters sys_params = { dt, ds, n, N, g0, eta0, xi0, q, q_dot, false, extra};
     struct ActuatorParameters act_params;
     if (act_flag == 0){ //cable
     	sys_params.delta = false;
@@ -145,7 +150,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     	for (j=0;j<6;j++) {
     		eta_out_vec[j*n+i] = gsl_matrix_get(params.eta,i,j);
     		xi_out_vec[j*n+i] = gsl_matrix_get(params.xi,i,j);
-    		
+
     		g_out_vec[j*n+i] = gsl_matrix_get(params.g,i,j);
     		g_out_vec[(j+6)*n+i] = gsl_matrix_get(params.g,i,j+6);
     	}
@@ -155,13 +160,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 
     gsl_matrix_free(extra);
-    
+
     gsl_matrix_free(g0);
     gsl_vector_free(xi0);
     gsl_vector_free(xi_ref);
     gsl_vector_free(eta0);
 
     gsl_vector_free(q);
+    gsl_vector_free(q_dot);
 
     gsl_matrix_free(eta);
     gsl_matrix_free(eta_prev);
