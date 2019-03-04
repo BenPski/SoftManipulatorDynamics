@@ -461,6 +461,9 @@ void integrate(struct SystemParameters sys_params, struct BodyParameters body_pa
     gsl_vector *xi0 = sys_params.xi0;
 
     gsl_matrix *g_temp = gsl_matrix_calloc(4,4);
+    gsl_matrix *g_res = gsl_matrix_calloc(4,4);
+    gsl_matrix *g_prev = gsl_matrix_calloc(4,4);
+    gsl_vector *g_prev_row = gsl_vector_calloc(12);
     gsl_vector *g_row = gsl_vector_calloc(12);
 
     gsl_vector *xi_prev_row = gsl_vector_calloc(6);
@@ -506,6 +509,7 @@ void integrate(struct SystemParameters sys_params, struct BodyParameters body_pa
         gsl_blas_dgemv(CblasNoTrans,dt,xi_adj,eta_row,1.0,xi_row);
         gsl_matrix_set_row(xi,i,xi_row);
 
+/*
         //do the accumulated xi
         gsl_vector_add(xi_acc,xi_row);
         gsl_vector_add(xi_acc,xi_row_off);
@@ -518,6 +522,21 @@ void integrate(struct SystemParameters sys_params, struct BodyParameters body_pa
 
         flattenConfig(g_temp,g_row);
         gsl_matrix_set_row(g,i,g_row);
+*/
+        //integrate g using g_i+1 = g_i*exp(ds/2*(xi_i+1+xi_i))
+        gsl_vector_memcpy(xi_acc_temp,xi_row);
+        gsl_vector_add(xi_acc_temp,xi_row_off);
+        gsl_vector_scale(xi_acc_temp,ds/2);
+        //gsl_vector_scale(xi_acc_temp,ds);
+
+        expSE(xi_acc_temp, g_temp);
+
+        gsl_matrix_get_row(g_prev_row,g,i-1);
+        unflattenConfig(g_prev_row,g_prev);
+        gsl_blas_dgemm(CblasNoTrans,CblasNoTrans,1.0,g_prev,g_temp,0.0,g_res);
+        flattenConfig(g_res,g_row);
+        gsl_matrix_set_row(g,i,g_row);
+
     }
 
     if (sys_params.delta) {
@@ -590,7 +609,10 @@ void integrate(struct SystemParameters sys_params, struct BodyParameters body_pa
     gsl_vector_free(xi_row_off);
 
     gsl_matrix_free(g_temp);
+    gsl_matrix_free(g_res);
+    gsl_matrix_free(g_prev);
     gsl_vector_free(g_row);
+    gsl_vector_free(g_prev_row);
     gsl_matrix_free(xi_adj);
     gsl_vector_free(xi_acc);
     gsl_vector_free(xi_acc_temp);
@@ -604,7 +626,7 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
 
 
     int i, j, m, N;
-    double rx, ry, E, G, I, J, A, p, grav, ds, Rad;
+    double rx, ry, E, G, Ix, Iy, J, A, p, grav, ds, Rad;
     double ox,oy,oz,nx,ny,nz, F;
     //double ox_dot,oy_dot,oz_dot,nx_dot,ny_dot,nz_dot, wx_dot,wy_dot,wz_dot,vx_dot,vy_dot,vz_dot;
 
@@ -652,7 +674,8 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
     G = body_params.G;
     p = body_params.p;
     A = body_params.A;
-    I = body_params.I;
+    Ix = body_params.Ix;
+    Iy = body_params.Iy;
     J = body_params.J;
     Rad = body_params.R;
     gsl_vector *xi_ref = body_params.xi_ref;
@@ -668,14 +691,14 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
     grav = -9.8;
     //grav = 0;
 
-    gsl_matrix_set(K,0,0,E*I);
-    gsl_matrix_set(K,1,1,E*I);
+    gsl_matrix_set(K,0,0,E*Ix);
+    gsl_matrix_set(K,1,1,E*Iy);
     gsl_matrix_set(K,2,2,G*J);
     gsl_matrix_set(K,3,3,G*A);
     gsl_matrix_set(K,4,4,G*A);
     gsl_matrix_set(K,5,5,E*A);
-    gsl_matrix_set(gamma,0,0,p*I);
-    gsl_matrix_set(gamma,1,1,p*I);
+    gsl_matrix_set(gamma,0,0,p*Ix);
+    gsl_matrix_set(gamma,1,1,p*Iy);
     gsl_matrix_set(gamma,2,2,p*J);
     gsl_matrix_set(gamma,3,3,p*A);
     gsl_matrix_set(gamma,4,4,p*A);
@@ -812,8 +835,8 @@ void timeDerivative(struct SystemParameters sys_params, struct BodyParameters bo
             temp_vec[j] += F_vec[j];
         }
 
-        temp_vec[0] = temp_vec[0]/(I*p);
-        temp_vec[1] = temp_vec[1]/(I*p);
+        temp_vec[0] = temp_vec[0]/(Ix*p);
+        temp_vec[1] = temp_vec[1]/(Iy*p);
         temp_vec[2] = temp_vec[2]/(J*p);
         temp_vec[3] = temp_vec[3]/(A*p);
         temp_vec[4] = temp_vec[4]/(A*p);
@@ -892,7 +915,8 @@ void boundaryConditions(struct SystemParameters sys_params, struct BodyParameter
     double G = body_params.G;
     //double p = body_params.p;
     double A = body_params.A;
-    double I = body_params.I;
+    double Ix = body_params.Ix;
+    double Iy = body_params.Iy;
     double J = body_params.J;
     double L = body_params.L;
     double Rad = body_params.R;
@@ -902,8 +926,8 @@ void boundaryConditions(struct SystemParameters sys_params, struct BodyParameter
     gsl_matrix_get_row(xiL,xi,n-1);
 
     gsl_matrix *K = gsl_matrix_calloc(6,6);
-    gsl_matrix_set(K,0,0,E*I);
-    gsl_matrix_set(K,1,1,E*I);
+    gsl_matrix_set(K,0,0,E*Ix);
+    gsl_matrix_set(K,1,1,E*Iy);
     gsl_matrix_set(K,2,2,G*J);
     gsl_matrix_set(K,3,3,G*A);
     gsl_matrix_set(K,4,4,G*A);
@@ -952,7 +976,8 @@ void boundaryConditions(struct SystemParameters sys_params, struct BodyParameter
 
 double tcaForceDynamics(int n, double delta, double delta_dot, double temp, double temp_dot) {
     //The discretized, distributed dynamics for a single segment of the TCA
-    double l = 0.23;
+    temp = temp-25;
+    double l = 0.13;
     double L = 0.04;
     double d0 = 0.55e-3;
     double D = 2e-3-d0;
@@ -961,7 +986,7 @@ double tcaForceDynamics(int n, double delta, double delta_dot, double temp, doub
 
     double rho = 4e-5;
     double ds = L/n;
-    double theta0 = 2*M_PI*760;
+    double theta0 = 2*M_PI*100;
     double E = 2.25e9;
     double mu = 2.2e6;
     double G = E/3;
@@ -990,10 +1015,10 @@ double tcaForceBase(int k, double delta, double temp) {
 
     /* the force equation for the TCAs */
 
-    double l = 0.13;
-    double L = 0.04;
-    double phi0 = 2*M_PI*100;
-    double D = 1.7e-3;
+    double l = 0.15;
+    double L = 0.026;
+    double phi0 = 2*M_PI*200;
+    double D = 2.2e-3;
     int N = 3;
 
     double rho = 4.1582e-05+9.8218e-07*(temp+25);
@@ -1037,8 +1062,8 @@ double tcaForceBase(int k, double delta, double temp) {
 }
 
 double tcaForce(struct SystemParameters sys_params, int i, int j, double s) {
-    return tcaForceDynamics(sys_params.n, gsl_matrix_get(sys_params.extra,j,i), gsl_matrix_get(sys_params.extra,j,i+sys_params.N), gsl_vector_get(sys_params.q,i), gsl_vector_get(sys_params.q_dot,i));
-    //return tcaForceBase(sys_params.n, gsl_matrix_get(sys_params.extra,j,i), gsl_vector_get(sys_params.q,i));
+    //return tcaForceDynamics(sys_params.n, gsl_matrix_get(sys_params.extra,j,i), gsl_matrix_get(sys_params.extra,j,i+sys_params.N), gsl_vector_get(sys_params.q,i), gsl_vector_get(sys_params.q_dot,i));
+    return tcaForceBase(sys_params.n, gsl_matrix_get(sys_params.extra,j,i), gsl_vector_get(sys_params.q,i));
 }
 
 double cableForce(struct SystemParameters sys_params, int i, int j, double s) {
@@ -1051,6 +1076,14 @@ double rx_fun(double R, int i, int N, double s) {
 
 double ry_fun(double R, int i, int N, double s) {
     return R*sin(2*i*M_PI/N);
+}
+
+double rx_shift(double R, int i, int N, double s) {
+    return R;
+}
+
+double ry_shift(double R, int i, int N, double s) {
+    return 0;
 }
 
 

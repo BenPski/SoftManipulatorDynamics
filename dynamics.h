@@ -12,7 +12,8 @@ struct BodyParameters {
 
     //geometry (assumed constant for now)
     double J;
-    double I;
+    double Ix;
+    double Iy;
     double A;
     double R;
     double L;
@@ -67,5 +68,7 @@ double tcaForce(struct SystemParameters sys_params, int i, int j, double s);
 double cableForce(struct SystemParameters sys_params, int i, int j, double s);
 double rx_fun(double R, int i, int N, double s);
 double ry_fun(double R, int i, int N, double s);
+double rx_shift(double R, int i, int N, double s);
+double ry_shift(double R, int i, int N, double s);
 
 #endif

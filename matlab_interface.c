@@ -79,16 +79,32 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 
 	//setting up default values
+    // circular
     double L = 0.04;
     double p = 1000;
-    double E = 37.8e3;
+    double E = 37.8e6;
     double G = E/3;
     double D = 1e-2;
     double R = D/2;
     double A = M_PI*R*R;
-    double I = M_PI*pow(D,4)/32;
-    double J = 2*I;
-
+    double Ix = M_PI*pow(D,4)/32;
+    double Iy = M_PI*pow(D,4)/32;
+    double J = Ix+Iy;
+    
+    //tape
+    /*
+    double L = 0.026;
+    double p = 1000;
+    double E = 100e4/2;
+    double G = E/3;
+    double T = 0.5e-3;
+    double W = 0.5*25.4e-3;
+    double R = 5e-3;
+    double A = T*W;
+    double Ix = W*pow(T,3)/12;
+    double Iy = T*pow(W,3)/12;
+    double J = Ix+Iy;
+    */
 
     double ds = L/(n-1);
     gsl_matrix *g0 = gsl_matrix_alloc(4,4);
@@ -112,13 +128,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     	act_params.force = cableForce;
     } else if (act_flag == 1) { //tca
     	sys_params.delta = true;
-    	act_params.rx = rx_fun;
-    	act_params.ry = ry_fun;
+    	//act_params.rx = rx_fun;
+    	//act_params.ry = ry_fun;
+        act_params.rx = rx_shift;
+        act_params.ry = ry_shift;
     	act_params.force = tcaForce;
     }
 
 
-    struct BodyParameters body_params = { E, G, p, J, I, A, R, L, xi_ref};
+    struct BodyParameters body_params = { E, G, p, J, Ix, Iy, A, R, L, xi_ref};
 
     gsl_matrix *eta = gsl_matrix_alloc(n,6);
     gsl_matrix *g = gsl_matrix_alloc(n,12);
